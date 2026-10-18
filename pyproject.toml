@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "naturalness"
+version = "0.1.0"
+description = "Naturalness grounding: bounds on target-site CATEs from multi-site trials and observational data"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+# What `import causal_grounding` needs. The TabICLv2 backend (torch, tabicl),
+# Experiment III (jax, numpyro) and the comparators are in requirements.txt.
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "scipy>=1.11",
+    "scikit-learn>=1.3",
+]
+
+[tool.setuptools.packages.find]
+include = ["causal_grounding", "causal_grounding.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "ManyLabs1/pre-process"]

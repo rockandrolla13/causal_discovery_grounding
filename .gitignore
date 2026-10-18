@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+build/
+
+# Outputs of the paper scripts.
+results/
+
+# Data: downloaded by the user or written by the data stages.
+osrct_benchmark_v1.0/data/*
+!osrct_benchmark_v1.0/data/README.md
+ManyLabs1/pre-process/Manylabs1_data.*
+ManyLabs1/pre-process/covariates_list.txt
