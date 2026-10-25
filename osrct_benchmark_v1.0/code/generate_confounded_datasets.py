@@ -57,7 +57,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from experiments.manylabs_cohort import (  # noqa: E402
+from causal_grounding.loaders.cohort import (  # noqa: E402
     OBSERVED_GENDER_COHORT_RULE,
     restrict_to_observed_gender,
 )

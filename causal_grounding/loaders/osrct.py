@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 from .contract import RawDataset, SiteBundle, SiteTable
+from .covariates import DEFAULT_AGE_BINARY_THRESHOLD, derive_age_bin
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,7 @@ COVARIATES: Tuple[str, ...] = (
 # Fixed, not configurable, from discretize.py:52-54.
 POLIDEO_BIN_EDGES: Tuple[float, ...] = (-0.1, 2.5, 3.5, 6.1)
 
-# Mirrors experiments/utils.py:45,47.
-DEFAULT_AGE_BINARY_THRESHOLD = 21.0
+# Mirrors experiments/utils.py:47. The age threshold lives in .covariates.
 DEFAULT_POLIDEO_BINARY_THRESHOLD = 3.0
 
 
@@ -205,10 +205,9 @@ class OSRCTLoader:
         # Truncates, does not round. See the warning above — deliberate.
         result["resp_gender_bin"] = result["resp_gender"].astype(int)
 
-        result["resp_age_bin"] = (
-            pd.to_numeric(result["resp_age"], errors="coerce")
-            > self.age_threshold
-        ).astype(int)
+        result["resp_age_bin"] = derive_age_bin(
+            result["resp_age"], self.age_threshold
+        )
         result["resp_polideo_bin"] = (
             pd.to_numeric(result["resp_polideo"], errors="coerce")
             > self.polideo_threshold
