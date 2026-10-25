@@ -1,10 +1,22 @@
-"""OSRCT data-file discovery for the ManyLabs experiment studies."""
+"""OSRCT data-file discovery and the OSRCT benchmark generator code.
+
+The generator lives in ``osrct_benchmark_v1.0/code``. The dot in that name
+makes the directory unimportable as a package, so
+:func:`load_osrct_benchmark_module` loads its modules by file path.
+"""
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
+#: Directory of the OSRCT benchmark's generator code.
+OSRCT_BENCHMARK_CODE_DIR = Path(__file__).resolve().parents[1] / "osrct_benchmark_v1.0" / "code"
+#: The benchmark's modules, each listed after the siblings it imports by bare name.
+OSRCT_BENCHMARK_MODULES = ("osrct", "experimental_grid", "generate_confounded_datasets")
 
 SUPPORTED_MANYLABS_STUDIES = (
     "gainloss",
@@ -50,3 +62,42 @@ def find_osrct_file(config: Any) -> Path:
         + "\n".join(f"  {path}" for path in candidates)
     )
 
+
+def load_osrct_benchmark_module(name: str) -> ModuleType:
+    """Load one module of the OSRCT benchmark code by its file path.
+
+    The generator imports its siblings by bare name (``from osrct import ...``).
+    The function therefore loads ``name`` and the modules listed before it in
+    :data:`OSRCT_BENCHMARK_MODULES`, and registers each in ``sys.modules`` under
+    its bare name. A module that is already registered from the same file is
+    reused, so repeated calls return the same module object.
+
+    Args:
+        name: Module name without ``.py``, one of :data:`OSRCT_BENCHMARK_MODULES`.
+
+    Returns:
+        The loaded module.
+
+    Raises:
+        ValueError: If ``name`` is not a benchmark module.
+        ImportError: If ``sys.modules`` already holds a different module of that name.
+    """
+    if name not in OSRCT_BENCHMARK_MODULES:
+        raise ValueError(f"Unknown OSRCT benchmark module {name!r}; choose from {OSRCT_BENCHMARK_MODULES}")
+    module = None
+    for dependency in OSRCT_BENCHMARK_MODULES[: OSRCT_BENCHMARK_MODULES.index(name) + 1]:
+        path = OSRCT_BENCHMARK_CODE_DIR / f"{dependency}.py"
+        module = sys.modules.get(dependency)
+        if module is not None:
+            if Path(getattr(module, "__file__", "") or "").resolve() != path.resolve():
+                raise ImportError(f"sys.modules[{dependency!r}] is {module!r}, not {path}")
+            continue
+        spec = importlib.util.spec_from_file_location(dependency, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[dependency] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            del sys.modules[dependency]
+            raise
+    return module

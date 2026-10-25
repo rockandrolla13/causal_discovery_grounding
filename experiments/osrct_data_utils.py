@@ -18,12 +18,12 @@ from causal_grounding.loaders.covariates import (
     DEFAULT_POLIDEO_BINARY_THRESHOLD,
 )
 from causal_grounding.paper_grids import EPSILON_GRID, TAU_GRID
-from experiments.utils import (
+from experiments.covariate_preparation import (
     add_binary_covariates,
     add_naturalness_columns,
     expand_target_sites,
-    find_osrct_file,
 )
+from experiments.osrct_files import find_osrct_file
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

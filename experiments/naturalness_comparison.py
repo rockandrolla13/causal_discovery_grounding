@@ -42,15 +42,15 @@ from causal_grounding.lp_solver_learned_naturalness import (
     estimate_target_observed_binary_quantities,
 )
 from causal_grounding.manski import manski_bounds
+from causal_grounding.seeding import crc32_seed
 from causal_grounding.train_target_split import create_train_target_split
 from experiments import osrct_target_pipeline as target_pipeline
 from experiments import naturalness_comparison_data as data
-from experiments.utils import (
+from experiments.run_config import (
     build_configured_naturalness_grounder,
     build_lp_probability_model_kwargs,
-    json_default,
-    write_run_manifest,
 )
+from experiments.run_manifest import json_default, write_run_manifest
 
 
 LOGGER = logging.getLogger(__name__)
@@ -182,7 +182,7 @@ def prepare_condition(prepared: Mapping[str, Any], dataset: str, beta: float, se
         raise ValueError(f"{dataset} declares a latent assignment mechanism, which this comparison does not support")
     partitions, treatment, outcome = data.build_partitions(
         prepared["sites"], prepared["treatment"], prepared["covariates"], bias, beta, .4,
-        np.random.default_rng(data.stable_seed(dataset, bias, beta, seed)),
+        np.random.default_rng(crc32_seed(dataset, bias, beta, seed)),
         potential=prepared["potential"],
         clusters=prepared.get("clusters"), trial_probability=prepared.get("trial_probability"))
     frame = pd.DataFrame(prepared["covariates"][:, [names.index(c) for c in covariates]], columns=covariates)
@@ -203,7 +203,7 @@ def prepare_condition(prepared: Mapping[str, Any], dataset: str, beta: float, se
         for regime, rows in (("on", partition.rct), ("idle", idle_rows)):
             fit_rows = rows
             if config.max_fit_rows and len(rows) > config.max_fit_rows:
-                fit_rows = np.sort(np.random.default_rng(data.stable_seed("stage2-fit-cap", seed, site, regime)).choice(
+                fit_rows = np.sort(np.random.default_rng(crc32_seed("stage2-fit-cap", seed, site, regime)).choice(
                     rows, config.max_fit_rows, replace=False))
             fitting.append(frame.iloc[fit_rows].assign(F=regime))
             row_audits.append(dict(site=site, regime=regime, population_rows=len(rows), fitting_rows=len(fit_rows),
@@ -949,7 +949,14 @@ def _fingerprint(config: ComparisonConfig) -> tuple[str, dict[str, Any]]:
         settings.pop(key, None)
     repo = Path(__file__).resolve().parents[1]
     sources = [Path(__file__), repo / "experiments/naturalness_comparison_data.py",
-               repo / "experiments/benchmarks.py", repo / "experiments/utils.py",
+               repo / "experiments/benchmarks.py",
+               repo / "experiments/osrct_files.py",
+               repo / "experiments/covariate_preparation.py",
+               repo / "experiments/run_config.py",
+               repo / "experiments/conformal_bounds.py",
+               repo / "experiments/lp_summaries.py",
+               repo / "experiments/run_manifest.py",
+               repo / "experiments/latex_tables.py",
                repo / "experiments/exp16_osrct_calibrated_policy.py",
                repo / "experiments/osrct_target_pipeline.py",
                repo / "experiments/exp18_cb_meta_learner_comparison.py"]
@@ -1008,7 +1015,7 @@ def _run_grid_job(job: _GridJob, config: ComparisonConfig, output: Path
     """Fit, score and write every target condition of one grid job.
 
     Each target writes its own leaf, so a resumed run picks up completed targets from their
-    ``completion.json``. Every random stream comes from ``stable_seed`` on the condition's
+    ``completion.json``. Every random stream comes from ``crc32_seed`` on the condition's
     identifiers, so the result does not depend on which process runs the job.
 
     Args:

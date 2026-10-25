@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 import experiments.exp25_hit_ratio_analysis as analysis
+import experiments.hit_ratio_metrics as hit_metrics
 
 
 STRATA = (
@@ -82,7 +83,7 @@ def _write_leaf(path: Path, frame: pd.DataFrame) -> Path:
     """Write one interval table into a result leaf directory."""
 
     path.mkdir(parents=True, exist_ok=True)
-    frame.to_parquet(path / analysis.INTERVALS_FILENAME, index=False)
+    frame.to_parquet(path / hit_metrics.INTERVALS_FILENAME, index=False)
     return path
 
 
@@ -91,11 +92,11 @@ def test_interval_sign_classifies_verdicts() -> None:
 
     lower = pd.Series([0.1, -0.5, -0.2, np.nan])
     upper = pd.Series([0.4, -0.1, 0.3, 0.5])
-    verdicts = analysis.interval_sign(lower, upper)
+    verdicts = hit_metrics.interval_sign(lower, upper)
     assert list(verdicts[:3]) == [
-        analysis.SIGN_POSITIVE,
-        analysis.SIGN_NEGATIVE,
-        analysis.SIGN_INCONCLUSIVE,
+        hit_metrics.SIGN_POSITIVE,
+        hit_metrics.SIGN_NEGATIVE,
+        hit_metrics.SIGN_INCONCLUSIVE,
     ]
     assert verdicts.isna().iloc[3]
 
@@ -111,12 +112,12 @@ def test_annotate_reference_agreement_flags_hits_and_signs() -> None:
             frame["method"],
         ),
     )
-    annotated = analysis.annotate_reference_agreement(models)
+    annotated = hit_metrics.annotate_reference_agreement(models)
     naturalness = annotated.loc[annotated["method"].eq("naturalness")]
     # Bounds [0.05, 0.45] cover the positive stratum 0 but not the negative
     # stratum 1 nor the inconclusive stratum 2; stratum 3 is invalid.
     assert list(naturalness["rct_hit"]) == [True, False, False, False]
-    assert list(naturalness["model_sign"][:3]) == [analysis.SIGN_POSITIVE] * 3
+    assert list(naturalness["model_sign"][:3]) == [hit_metrics.SIGN_POSITIVE] * 3
     assert list(naturalness["sign_match"]) == [True, False, False, False]
     assert list(naturalness["sign_recall"]) == [True, False, False, False]
     assert list(naturalness["sign_reversal"]) == [False, True, False, False]
@@ -139,8 +140,8 @@ def test_summarize_agreement_counts_failures_as_misses() -> None:
             frame["method"],
         ),
     )
-    annotated = analysis.annotate_reference_agreement(models)
-    summary = analysis.summarize_agreement(annotated, grouping=("beta",))
+    annotated = hit_metrics.annotate_reference_agreement(models)
+    summary = hit_metrics.summarize_agreement(annotated, grouping=("beta",))
     naturalness = summary.loc[summary["model"].eq("naturalness")].iloc[0]
     assert naturalness["n_strata"] == 4
     assert naturalness["n_valid"] == 3
@@ -163,7 +164,7 @@ def test_selected_width_hit_table_breaks_out_beta_and_study() -> None:
         for beta in (0.25, 0.5, 1.0):
             for study_index, study in enumerate(("gainloss", "reciprocity")):
                 for model_index, (_, model) in enumerate(
-                    analysis.SELECTED_WIDTH_HIT_MODELS
+                    hit_metrics.SELECTED_WIDTH_HIT_MODELS
                 ):
                     rows.append(
                         {
@@ -182,10 +183,10 @@ def test_selected_width_hit_table_breaks_out_beta_and_study() -> None:
                     )
     common = pd.DataFrame(rows)
 
-    first = analysis.summarize_selected_method_width_hit(
+    first = hit_metrics.summarize_selected_method_width_hit(
         common, bootstrap_replicates=100, seed=19
     )
-    second = analysis.summarize_selected_method_width_hit(
+    second = hit_metrics.summarize_selected_method_width_hit(
         common, bootstrap_replicates=100, seed=19
     )
 
@@ -200,7 +201,7 @@ def test_selected_width_hit_table_breaks_out_beta_and_study() -> None:
         "se_hit_ratio",
     ]
     assert set(first["beta"]) == {0.5, 1.0}
-    assert len(first) == 2 * 2 * len(analysis.SELECTED_WIDTH_HIT_MODELS)
+    assert len(first) == 2 * 2 * len(hit_metrics.SELECTED_WIDTH_HIT_MODELS)
     selected = first.loc[
         first["beta"].eq(0.5)
         & first["study"].eq("gainloss")
@@ -218,24 +219,24 @@ def test_sign_confusion_matrix_counts_only_usable_verdicts() -> None:
     models = _interval_fixture().assign(
         gamma_run="dgp_oracle", model=lambda frame: frame["method"].astype(str)
     )
-    annotated = analysis.annotate_reference_agreement(models)
+    annotated = hit_metrics.annotate_reference_agreement(models)
     naturalness = annotated.loc[annotated["model"].eq("naturalness")]
-    matrix = analysis.sign_confusion_matrix(naturalness)
+    matrix = hit_metrics.sign_confusion_matrix(naturalness)
     # Bounds [0.05, 0.45] call every stratum positive, and stratum 3 is
     # invalid, so all three usable rows land in the positive column.
     assert matrix.sum() == pytest.approx(3.0)
-    assert matrix[:, analysis.POSITIVE_INDEX].tolist() == [1.0, 1.0, 1.0]
-    assert matrix[:, analysis.NEGATIVE_INDEX].sum() == pytest.approx(0.0)
+    assert matrix[:, hit_metrics.POSITIVE_INDEX].tolist() == [1.0, 1.0, 1.0]
+    assert matrix[:, hit_metrics.NEGATIVE_INDEX].sum() == pytest.approx(0.0)
 
 
 def test_sign_metrics_partition_the_usable_strata() -> None:
     """The five verdict cells sum to the usable count and drive every rate."""
 
     matrix = np.zeros((3, 3))
-    matrix[analysis.POSITIVE_INDEX, analysis.POSITIVE_INDEX] = 1.0
-    matrix[analysis.NEGATIVE_INDEX, analysis.POSITIVE_INDEX] = 1.0
-    matrix[analysis.INCONCLUSIVE_INDEX, analysis.POSITIVE_INDEX] = 1.0
-    scored = analysis.sign_metrics_from_matrix(matrix)
+    matrix[hit_metrics.POSITIVE_INDEX, hit_metrics.POSITIVE_INDEX] = 1.0
+    matrix[hit_metrics.NEGATIVE_INDEX, hit_metrics.POSITIVE_INDEX] = 1.0
+    matrix[hit_metrics.INCONCLUSIVE_INDEX, hit_metrics.POSITIVE_INDEX] = 1.0
+    scored = hit_metrics.sign_metrics_from_matrix(matrix)
     cells = (
         scored["n_sign_correct"]
         + scored["n_sign_reversal"]
@@ -260,7 +261,7 @@ def test_sign_metrics_partition_the_usable_strata() -> None:
 def test_sign_metrics_exclude_classification_scores() -> None:
     """No classifier aggregate survives; a bound is not a labelling rule."""
 
-    scored = analysis.sign_metrics_from_matrix(np.diag([4.0, 5.0, 6.0]))
+    scored = hit_metrics.sign_metrics_from_matrix(np.diag([4.0, 5.0, 6.0]))
     for removed in (
         "sign_f1",
         "sign_mcc",
@@ -279,7 +280,7 @@ def test_sign_metrics_broadcast_over_stacked_matrices() -> None:
     """Leading axes are treated as a batch so the bootstrap can score in bulk."""
 
     stacked = np.stack([np.diag([3.0, 3.0, 3.0]), np.full((3, 3), 2.0)])
-    scored = analysis.sign_metrics_from_matrix(stacked)
+    scored = hit_metrics.sign_metrics_from_matrix(stacked)
     assert scored["sign_correct_rate"].shape == (2,)
     # A perfectly diagonal matrix has no reversals and no undetermined calls.
     assert scored["sign_correct_rate"][0] == pytest.approx(1.0)
@@ -293,9 +294,9 @@ def test_summarize_agreement_reports_sign_identification_metrics() -> None:
     models = _interval_fixture().assign(
         gamma_run="dgp_oracle", model=lambda frame: frame["method"].astype(str)
     )
-    annotated = analysis.annotate_reference_agreement(models)
-    summary = analysis.summarize_agreement(annotated, grouping=("beta",))
-    for column in (*analysis.SIGN_COUNT_COLUMNS, *analysis.SIGN_METRIC_COLUMNS):
+    annotated = hit_metrics.annotate_reference_agreement(models)
+    summary = hit_metrics.summarize_agreement(annotated, grouping=("beta",))
+    for column in (*hit_metrics.SIGN_COUNT_COLUMNS, *hit_metrics.SIGN_METRIC_COLUMNS):
         assert column in summary.columns
     naturalness = summary.loc[summary["model"].eq("naturalness")].iloc[0]
     assert naturalness["n_model_decisive"] == 3
@@ -314,12 +315,12 @@ def test_discover_and_load_gamma_variants(tmp_path: Path) -> None:
 
     primary = _write_leaf(tmp_path / "primary", _interval_fixture())
     _write_leaf(
-        primary / analysis.BASELINE_VARIANTS_DIRNAME / "gamma_exp_beta",
+        primary / hit_metrics.BASELINE_VARIANTS_DIRNAME / "gamma_exp_beta",
         _interval_fixture(blearner_shift=0.1),
     )
-    leaves = analysis.discover_exp25_gamma_leaves(primary)
+    leaves = hit_metrics.discover_exp25_gamma_leaves(primary)
     assert [label for label, _ in leaves] == ["dgp_oracle", "exp_beta"]
-    models = analysis.load_exp25_models(leaves)
+    models = hit_metrics.load_exp25_models(leaves)
     assert set(models["model"]) == {
         "naturalness",
         "cb_ipw",
@@ -365,16 +366,16 @@ def test_identification_leaf_adds_reference_models_without_moving_support(
     """Manski/Balke-Pearl join as models; core common support is unchanged."""
 
     primary = _write_leaf(tmp_path / "primary", _interval_fixture())
-    variants = primary / analysis.BASELINE_VARIANTS_DIRNAME
-    core = analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+    variants = primary / hit_metrics.BASELINE_VARIANTS_DIRNAME
+    core = hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
     _write_leaf(variants / "identification_bounds", _reference_bound_fixture())
-    models = analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+    models = hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
     assert set(models["model"]) == set(core["model"]) | {"manski", "balke_pearl"}
     assert int(models["model"].eq("balke_pearl").sum()) == len(STRATA)
 
-    common = analysis.select_common_support(analysis.annotate_reference_agreement(models))
-    core_common = analysis.select_common_support(analysis.annotate_reference_agreement(core))
-    compared = common.loc[~common["model"].isin(analysis.REFERENCE_BOUND_MODELS)]
+    common = hit_metrics.select_common_support(hit_metrics.annotate_reference_agreement(models))
+    core_common = hit_metrics.select_common_support(hit_metrics.annotate_reference_agreement(core))
+    compared = common.loc[~common["model"].isin(hit_metrics.REFERENCE_BOUND_MODELS)]
     pd.testing.assert_frame_equal(
         compared.drop(columns=["gamma_run", "result_leaf"]).reset_index(drop=True),
         core_common.drop(columns=["gamma_run", "result_leaf"]).reset_index(drop=True),
@@ -391,11 +392,11 @@ def test_sign_table_uses_every_listed_model_for_support(tmp_path: Path) -> None:
 
     primary = _write_leaf(tmp_path / "primary", _interval_fixture())
     _write_leaf(
-        primary / analysis.BASELINE_VARIANTS_DIRNAME / "identification_bounds",
+        primary / hit_metrics.BASELINE_VARIANTS_DIRNAME / "identification_bounds",
         _reference_bound_fixture(),
     )
-    annotated = analysis.annotate_reference_agreement(
-        analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+    annotated = hit_metrics.annotate_reference_agreement(
+        hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
     )
 
     lines = analysis.sign_table_latex(annotated).splitlines()
@@ -425,8 +426,8 @@ def test_sign_table_by_study_follows_manuscript_order(tmp_path: Path) -> None:
         ignore_index=True,
     )
     primary = _write_leaf(tmp_path / "primary", frame)
-    annotated = analysis.annotate_reference_agreement(
-        analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+    annotated = hit_metrics.annotate_reference_agreement(
+        hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
     )
 
     lines = analysis.sign_table_latex(
@@ -463,19 +464,19 @@ def test_common_support_frontier_bootstraps_width_and_hit_intervals() -> None:
         model=lambda frame: np.where(
             frame["method"].eq("blearner"), "blearner[dgp_oracle]", frame["method"]),
     )
-    annotated = analysis.annotate_reference_agreement(models)
+    annotated = hit_metrics.annotate_reference_agreement(models)
     columns = ["mean_width_ci_lower", "mean_width_ci_upper",
                "hit_ratio_ci_lower", "hit_ratio_ci_upper"]
-    plain = analysis.common_support_frontier(annotated, grouping=("beta",))
+    plain = hit_metrics.common_support_frontier(annotated, grouping=("beta",))
     assert not set(columns).intersection(plain.columns)
 
-    frontier = analysis.common_support_frontier(
+    frontier = hit_metrics.common_support_frontier(
         annotated, grouping=("beta",), bootstrap_replicates=400, seed=3)
-    again = analysis.common_support_frontier(
+    again = hit_metrics.common_support_frontier(
         annotated, grouping=("beta",), bootstrap_replicates=400, seed=3)
     pd.testing.assert_frame_equal(frontier, again)
     pd.testing.assert_frame_equal(frontier.drop(columns=[*columns, "ci_level"]), plain)
-    assert frontier["ci_level"].eq(analysis.FRONTIER_CONFIDENCE_LEVEL).all()
+    assert frontier["ci_level"].eq(hit_metrics.FRONTIER_CONFIDENCE_LEVEL).all()
     for metric in ("mean_width", "hit_ratio"):
         assert (frontier[f"{metric}_ci_lower"] <= frontier[metric] + 1e-12).all()
         assert (frontier[f"{metric}_ci_upper"] >= frontier[metric] - 1e-12).all()
@@ -487,14 +488,14 @@ def test_common_support_frontier_can_anchor_on_one_model() -> None:
     """Naming every other model a reference lets one model fix the support."""
 
     models = _interval_fixture().assign(model=lambda frame: frame["method"])
-    annotated = analysis.annotate_reference_agreement(models)
-    default = analysis.common_support_frontier(
+    annotated = hit_metrics.annotate_reference_agreement(models)
+    default = hit_metrics.common_support_frontier(
         annotated, grouping=("beta",)).set_index("model")
     # Naturalness has no fourth-stratum interval, so the complete case drops it
     # for every model.
     assert default["n_common"].eq(3).all()
     others = sorted(set(models["model"]) - {"cb_dr"})
-    anchored = analysis.common_support_frontier(
+    anchored = hit_metrics.common_support_frontier(
         annotated, grouping=("beta",), reference_models=others).set_index("model")
     assert anchored.loc["cb_dr", "n_common"] == 4
     assert anchored.loc["cb_ipw", "n_common"] == 4
@@ -515,16 +516,16 @@ def test_common_support_frontier_reports_replication_spread() -> None:
         model=lambda frame: np.where(
             frame["method"].eq("blearner"), "blearner[dgp_oracle]", frame["method"]),
     )
-    annotated = analysis.annotate_reference_agreement(models)
+    annotated = hit_metrics.annotate_reference_agreement(models)
     columns = ["mean_width_sd", "hit_ratio_sd", "n_replications"]
-    plain = analysis.common_support_frontier(annotated, grouping=("beta",))
+    plain = hit_metrics.common_support_frontier(annotated, grouping=("beta",))
     assert not set(columns).intersection(plain.columns)
 
-    frontier = analysis.common_support_frontier(
+    frontier = hit_metrics.common_support_frontier(
         annotated, grouping=("beta",), replication_spread=True)
     pd.testing.assert_frame_equal(frontier.drop(columns=columns), plain)
 
-    common = analysis.select_common_support(annotated)
+    common = hit_metrics.select_common_support(annotated)
     per_replication = common.groupby(["beta", "model", "replication"]).agg(
         width=("width", "mean"), hits=("rct_hit", "mean")).reset_index()
     expected = per_replication.groupby(["beta", "model"]).agg(
@@ -546,15 +547,15 @@ def test_identification_leaf_must_cover_primary_strata_once(tmp_path: Path) -> N
     """A partial or duplicated reference-bound leaf is rejected."""
 
     primary = _write_leaf(tmp_path / "primary", _interval_fixture())
-    variants = primary / analysis.BASELINE_VARIANTS_DIRNAME
+    variants = primary / hit_metrics.BASELINE_VARIANTS_DIRNAME
     bounds = _reference_bound_fixture()
     _write_leaf(variants / "identification_bounds", bounds.iloc[1:])
     with pytest.raises(ValueError, match="does not cover exactly"):
-        analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+        hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
     _write_leaf(variants / "identification_bounds", bounds)
     _write_leaf(variants / "identification_copy", bounds)
     with pytest.raises(ValueError, match="supplied by both"):
-        analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+        hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
 
 
 def test_load_exp25_models_rejects_altered_shared_rows(tmp_path: Path) -> None:
@@ -564,12 +565,12 @@ def test_load_exp25_models_rejects_altered_shared_rows(tmp_path: Path) -> None:
     altered = _interval_fixture()
     altered.loc[altered["method"].eq("cb_dr"), "upper"] = 0.5
     _write_leaf(
-        primary / analysis.BASELINE_VARIANTS_DIRNAME / "gamma_oracle",
+        primary / hit_metrics.BASELINE_VARIANTS_DIRNAME / "gamma_oracle",
         altered,
     )
-    leaves = analysis.discover_exp25_gamma_leaves(primary)
+    leaves = hit_metrics.discover_exp25_gamma_leaves(primary)
     with pytest.raises(ValueError, match="altered reused non-B-Learner rows"):
-        analysis.load_exp25_models(leaves)
+        hit_metrics.load_exp25_models(leaves)
 
 
 def test_run_analysis_writes_tables_and_report(tmp_path: Path) -> None:
@@ -577,7 +578,7 @@ def test_run_analysis_writes_tables_and_report(tmp_path: Path) -> None:
 
     primary = _write_leaf(tmp_path / "primary", _interval_fixture())
     _write_leaf(
-        primary / analysis.BASELINE_VARIANTS_DIRNAME / "gamma_exp_beta",
+        primary / hit_metrics.BASELINE_VARIANTS_DIRNAME / "gamma_exp_beta",
         _interval_fixture(blearner_shift=0.1),
     )
     result = analysis.run_analysis(primary, tmp_path / "analysis")
@@ -604,17 +605,17 @@ def test_discover_reads_primary_from_baseline_variants(tmp_path: Path) -> None:
     """The primary dgp_oracle run is discovered inside baseline_variants."""
 
     root = tmp_path / "tabicl_v2"
-    variants = root / analysis.BASELINE_VARIANTS_DIRNAME
+    variants = root / hit_metrics.BASELINE_VARIANTS_DIRNAME
     primary = _write_leaf(variants / "gamma_dgp_oracle", _interval_fixture())
     variant = _write_leaf(
         variants / "gamma_exp_beta",
         _interval_fixture(blearner_shift=0.1),
     )
 
-    leaves = analysis.discover_exp25_gamma_leaves(root)
+    leaves = hit_metrics.discover_exp25_gamma_leaves(root)
 
     assert leaves == [("dgp_oracle", primary), ("exp_beta", variant)]
-    models = analysis.load_exp25_models(leaves)
+    models = hit_metrics.load_exp25_models(leaves)
     assert int(models["model"].eq("naturalness").sum()) == len(STRATA)
     assert set(models["model"]) == {
         "naturalness",
@@ -629,7 +630,7 @@ def test_discover_requires_primary_intervals(tmp_path: Path) -> None:
     """A leaf without the primary compact table raises a targeted error."""
 
     with pytest.raises(FileNotFoundError, match="Primary Exp25 leaf"):
-        analysis.discover_exp25_gamma_leaves(tmp_path)
+        hit_metrics.discover_exp25_gamma_leaves(tmp_path)
 
 
 def _leaf_with_reference_bounds(path: Path) -> Path:
@@ -637,7 +638,7 @@ def _leaf_with_reference_bounds(path: Path) -> Path:
 
     primary = _write_leaf(path, _interval_fixture())
     _write_leaf(
-        primary / analysis.BASELINE_VARIANTS_DIRNAME / "identification_bounds",
+        primary / hit_metrics.BASELINE_VARIANTS_DIRNAME / "identification_bounds",
         _reference_bound_fixture(),
     )
     return primary
@@ -647,9 +648,9 @@ def test_failures_as_manski_scores_failed_strata_as_manski(tmp_path: Path) -> No
     """A failed stratum takes its Manski interval; usable rows are unchanged."""
 
     primary = _leaf_with_reference_bounds(tmp_path / "primary")
-    models = analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+    models = hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
 
-    scored = analysis.failures_as_manski(models)
+    scored = hit_metrics.failures_as_manski(models)
 
     assert len(scored) == len(models)
     assert scored["is_valid"].all()
@@ -670,9 +671,9 @@ def test_failures_as_manski_draw_level_mixes_naturalness_with_manski(
     """Valid Naturalness endpoints become their mixture with the Manski interval."""
 
     primary = _leaf_with_reference_bounds(tmp_path / "primary")
-    models = analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+    models = hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
 
-    scored = analysis.failures_as_manski(models, draw_level=True)
+    scored = hit_metrics.failures_as_manski(models, draw_level=True)
 
     naturalness = models["model"].eq("naturalness") & models["is_valid"]
     # An optimal-solve probability of 0.9 mixes [0.05, 0.45] with [-0.5, 0.5].
@@ -688,9 +689,9 @@ def test_failures_as_manski_requires_manski_rows(tmp_path: Path) -> None:
     """Without the identification-bounds leaf there is nothing to fall back to."""
 
     primary = _write_leaf(tmp_path / "primary", _interval_fixture())
-    models = analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+    models = hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
     with pytest.raises(ValueError, match="no Manski interval"):
-        analysis.failures_as_manski(models)
+        hit_metrics.failures_as_manski(models)
 
 
 def test_width_table_labels_selection_covariates(tmp_path: Path) -> None:
@@ -704,8 +705,8 @@ def test_width_table_labels_selection_covariates(tmp_path: Path) -> None:
         ignore_index=True,
     )
     primary = _write_leaf(tmp_path / "primary", frame)
-    annotated = analysis.annotate_reference_agreement(
-        analysis.load_exp25_models(analysis.discover_exp25_gamma_leaves(primary))
+    annotated = hit_metrics.annotate_reference_agreement(
+        hit_metrics.load_exp25_models(hit_metrics.discover_exp25_gamma_leaves(primary))
     )
 
     lines = analysis.width_table_latex(

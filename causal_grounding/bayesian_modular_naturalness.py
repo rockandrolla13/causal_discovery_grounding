@@ -42,6 +42,8 @@ from .lp_solver_learned_naturalness import (
     solve_target_weighted_cate_bounds_from_observed_binary_quantities,
 )
 from .naturalness_statistics import as_tuple, safe_sorted
+from .paper_grids import EPSILON_GRID as DEFAULT_EPSILONS
+from .paper_grids import TAU_GRID as DEFAULT_TAUS
 from .seeding import sha256_seed
 
 
@@ -49,8 +51,6 @@ LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_COVARIATES = ("z_clean", "z_bad")
-from .paper_grids import EPSILON_GRID as DEFAULT_EPSILONS
-from .paper_grids import TAU_GRID as DEFAULT_TAUS
 NUMERICAL_PROBABILITY_FLOOR = 1e-6
 # Nugget nu of the Gaussian-copula latent correlation, R = (1 - nu) K + nu I.
 # R keeps a unit diagonal, so every tolerance margin stays Uniform(0, 1), and its
@@ -73,10 +73,6 @@ _SURFACE_SPECS = (
     ("c", "required_two_c", ("i_deviation",)),
     ("d", "required_two_d", ("i_deviation", "d_strength")),
 )
-
-
-#: The SHA-256 seed scheme of this pipeline; see :mod:`causal_grounding.seeding`.
-_stable_seed = sha256_seed
 
 
 def _stable_sample_id(*parts: Any) -> str:
@@ -481,7 +477,7 @@ def draw_raw_pmfs(
         imputation: RawPMFImputation = {}
         for site in sites:
             on, idle = frames[site]
-            rng = np.random.default_rng(_stable_seed(random_seed, alpha, draw_index, site))
+            rng = np.random.default_rng(sha256_seed(random_seed, alpha, draw_index, site))
             imputation[site] = _draw_site_pmf(
                 on,
                 idle,
@@ -717,7 +713,7 @@ def draw_tabicl_bootstrap_pmfs(
         for site in sites:
             on, idle = frames[site]
             z_values, n_idle_z, n_idle_xz = supports[site]
-            rng = np.random.default_rng(_stable_seed("tabicl-bootstrap", random_seed, draw_index, site))
+            rng = np.random.default_rng(sha256_seed("tabicl-bootstrap", random_seed, draw_index, site))
             boot_on, boot_idle = _bootstrap_site_rows(on, idle, covariates=covariates, id_col=id_col,
                                                       overlap=overlaps[site], rng=rng) if resample else (on, idle)
             p_x1, p_y1, p_do = _tabicl_site_probabilities(
@@ -1525,7 +1521,7 @@ def fit_tolerance_surfaces(
                 raise ValueError(f"Candidate {candidate!r} has fewer than two {kind} evidence units")
             features = rows[list(feature_names)].to_numpy(dtype=float)
             omega = rows[omega_column].to_numpy(dtype=float)
-            seed = _stable_seed(random_seed, imputation_id, candidate, kind, "primary")
+            seed = sha256_seed(random_seed, imputation_id, candidate, kind, "primary")
             posterior = _fit_one_surface_numpyro(
                 candidate=str(candidate),
                 tolerance_kind=kind,
@@ -1549,7 +1545,7 @@ def fit_tolerance_surfaces(
                     features=features,
                     omega=omega,
                     imputation_id=imputation_id,
-                    random_seed=_stable_seed(random_seed, imputation_id, candidate, kind, "retry"),
+                    random_seed=sha256_seed(random_seed, imputation_id, candidate, kind, "retry"),
                     num_chains=num_chains,
                     num_warmup=retry_warmup,
                     num_samples=num_samples if retry_num_samples is None else retry_num_samples,
@@ -1566,7 +1562,7 @@ def fit_tolerance_surfaces(
                     features=features,
                     omega=omega,
                     imputation_id=imputation_id,
-                    random_seed=_stable_seed(random_seed, imputation_id, candidate, kind, "second_retry"),
+                    random_seed=sha256_seed(random_seed, imputation_id, candidate, kind, "second_retry"),
                     num_chains=num_chains,
                     num_warmup=int(second_retry["num_warmup"]),
                     num_samples=int(second_retry["num_samples"]),
@@ -1875,7 +1871,7 @@ def leave_one_source_out_scores(
         try:
             fitted = fit_tolerance_surfaces(
                 remaining,
-                random_seed=_stable_seed(random_seed, "leave-one-source-out", held_out),
+                random_seed=sha256_seed(random_seed, "leave-one-source-out", held_out),
                 unconverged=unconverged,
                 **fit_kwargs,
             )
@@ -1910,7 +1906,7 @@ def leave_one_source_out_scores(
                         query,
                         omega,
                         max_posterior_draws=max_posterior_draws,
-                        random_seed=_stable_seed(random_seed, "held-out-score", held_out, candidate, kind),
+                        random_seed=sha256_seed(random_seed, "held-out-score", held_out, candidate, kind),
                     ))
                     for key in ("passed", "attempt", "max_r_hat", "min_bulk_ess", "min_tail_ess", "n_divergent"):
                         record[f"refit_{key}"] = posterior.diagnostics.get(key)
@@ -1921,7 +1917,7 @@ def leave_one_source_out_scores(
                                 posterior,
                                 target,
                                 max_posterior_draws=max_posterior_draws,
-                                random_seed=_stable_seed(random_seed, "target-query", held_out, candidate, kind),
+                                random_seed=sha256_seed(random_seed, "target-query", held_out, candidate, kind),
                             )
                             record["target_predictive_q50"] = float(predictive.tolerance.median())
                             record["target_in_source_support"] = bool(
@@ -2198,14 +2194,14 @@ def draw_random_identified_sets(
                     two_c, c_posterior_index = sample_tolerance_surface(
                         c_surface,
                         c_query,
-                        random_seed=_stable_seed(random_seed, sample_id, statistic.candidate, "c"),
+                        random_seed=sha256_seed(random_seed, sample_id, statistic.candidate, "c"),
                         allow_extrapolation=not require_source_support,
                         return_index=True,
                     )
                     two_d, d_posterior_index = sample_tolerance_surface(
                         d_surface,
                         d_query,
-                        random_seed=_stable_seed(random_seed, sample_id, statistic.candidate, "d"),
+                        random_seed=sha256_seed(random_seed, sample_id, statistic.candidate, "d"),
                         allow_extrapolation=not require_source_support,
                         return_index=True,
                     )
@@ -2366,7 +2362,7 @@ def draw_rct_reference_posterior(
     rows: list[dict[str, Any]] = []
     for draw_index in range(int(n_draws)):
         target_draw = target_pmf_draws[draw_index % len(target_pmf_draws)]
-        rng = np.random.default_rng(_stable_seed(random_seed, "rct-reference", draw_index))
+        rng = np.random.default_rng(sha256_seed(random_seed, "rct-reference", draw_index))
         cate: dict[tuple[int, ...], float] = {}
         for z in z_values:
             arm = {}

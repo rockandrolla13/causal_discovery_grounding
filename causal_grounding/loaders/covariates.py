@@ -3,7 +3,7 @@ Binary age and ideology covariates — the one definition of ``resp_age_bin`` an
 ``resp_polideo_bin``.
 
 Each was previously written three times: in :mod:`.osrct`, in
-:mod:`.manylabs_rct`, and in ``experiments/utils.py`` ``add_binary_covariates``.
+:mod:`.manylabs_rct`, and in ``experiments/covariate_preparation.py`` ``add_binary_covariates``.
 All three copies were the same expression, so they now call
 :func:`derive_age_bin` and :func:`derive_polideo_bin`.
 """

@@ -16,11 +16,8 @@ from scipy import stats
 from experiments.backdoor_cate_error_analysis import (
     write_backdoor_cate_error_analysis_plots,
 )
-from experiments.utils import (
-    USEFUL_COVARIATES,
-    make_multi_metric_summary_latex_table,
-    render_latex_table,
-)
+from experiments.covariate_preparation import USEFUL_COVARIATES
+from experiments.latex_tables import make_multi_metric_summary_latex_table, render_latex_table
 
 
 DEFAULT_EXP16_STUDIES = ("allowedforbidden", "gainloss", "reciprocity")

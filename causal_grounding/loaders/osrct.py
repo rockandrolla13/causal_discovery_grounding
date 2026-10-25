@@ -50,7 +50,7 @@ SITE = "site"
 
 # Single source of truth. Previously written three times — as
 # OSRCTConfig.covariates (never read), as USEFUL_COVARIATES in
-# experiments/utils.py, and implicitly in the derivation. See AR-DRY-012.
+# experiments/utils.py (now experiments/covariate_preparation.py), and implicitly in the derivation. See AR-DRY-012.
 COVARIATES: Tuple[str, ...] = (
     "resp_age_bin",
     "resp_gender_bin",
@@ -155,11 +155,11 @@ class OSRCTLoader:
         """Binarise the outcome and derive the three binary covariates.
 
         Binarisation pools values, requires exactly two distinct, and takes the
-        larger as positive (``experiments.utils.add_naturalness_columns``). For gainloss that
+        larger as positive (``experiments.covariate_preparation.add_naturalness_columns``). For gainloss that
         makes ``2.0`` the positive value.
 
         Warning:
-            ``experiments.utils.add_naturalness_columns`` casts ``resp_gender`` with
+            ``experiments.covariate_preparation.add_naturalness_columns`` casts ``resp_gender`` with
             ``.astype(int)``, which **truncates**. Five gainloss rows carry
             site-mean imputed values (0.6479 x3, 0.7236, 0.8188) and all five
             become 0 — every one of them is above 0.5, so rounding would flip
@@ -175,7 +175,7 @@ class OSRCTLoader:
         Note:
             **``resp_age_cat`` is deliberately not produced here.** The old code
             builds it with ``pd.qcut`` over the *concatenated* OSRCT and RCT
-            ages (``experiments.utils.add_naturalness_columns``), so it cannot be computed from one file.
+            ages (``experiments.covariate_preparation.add_naturalness_columns``), so it cannot be computed from one file.
             It is not one of the three declared covariates, so nothing in the
             grounder's covariate path needs it.
 

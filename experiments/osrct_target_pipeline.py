@@ -33,8 +33,6 @@ import numpy as np
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
 from causal_grounding.lp_solver_learned_naturalness import (
     TargetObservedBinaryQuantities,
     estimate_target_observed_binary_quantities,
@@ -44,6 +42,7 @@ from causal_grounding.lp_solver_learned_naturalness import (
 from causal_grounding.naturalness_grounder import NaturalnessGrounder
 from causal_grounding.naturalness_grounder import SUPPORTED_GP_FEATURE_MODES
 from causal_grounding.naturalness_target_policy import TargetNaturalnessPolicy
+from causal_grounding.seeding import posterior_sample_seeds
 from causal_grounding.train_target_split import create_train_target_split
 from experiments.backdoor_cate_error_analysis import (
     add_backdoor_cate_correction_outputs,
@@ -53,30 +52,29 @@ from experiments.naturalness_plotting import (
     make_exp16_plots,
     write_exp16_plot_metric_summary_tables,
 )
-from experiments.osrct_data_utils import (
-    OSRCTConfig,
-    expand_target_sites,
-    iter_base_configs,
-    load_prepared_data,
+from experiments.covariate_preparation import expand_target_sites
+from experiments.osrct_data_utils import OSRCTConfig, iter_base_configs, load_prepared_data
+from experiments.conformal_bounds import (
+    add_full_range_fallback,
+    conformalize_lp_bounds,
+    finite_sample_conformal_quantile,
 )
-from experiments.utils import (
+from experiments.lp_summaries import summarize_lp_posterior_bounds
+from experiments.run_config import (
     DEFAULT_LP_POSTERIOR_N_JOBS,
     SUPPORTED_STAGE1_BACKENDS,
     SUPPORTED_LP_PROBABILITY_BACKENDS,
     SUPPORTED_TARGET_TRIGGER_PROBABILITY_BACKENDS,
-    add_full_range_fallback,
     build_configured_naturalness_grid,
     build_lp_probability_model_kwargs,
-    conformalize_lp_bounds,
-    finite_sample_conformal_quantile,
     fit_configured_naturalness_grounder,
-    json_default,
     resolve_lp_probability_backend,
     resolve_target_trigger_probability_backend,
-    summarize_lp_posterior_bounds,
     uses_hierarchical_dirichlet_draws,
-    write_run_manifest,
 )
+from experiments.run_manifest import json_default, write_run_manifest
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 DEFAULT_EXP16_STUDIES = ("allowedforbidden", "gainloss", "reciprocity")
@@ -543,7 +541,6 @@ def _minimum_non_sentinel_score_count(alpha: float) -> int:
     while int(np.ceil((n_scores + 1) * (1.0 - float(alpha)))) > n_scores:
         n_scores += 1
     return n_scores
-
 
 
 @dataclass
@@ -1825,11 +1822,9 @@ def solve_choices_lp_posterior_samples(
     observed = None
     probability_sample_seeds: list[int] = []
     if sample_target_probabilities:
-        seed_sequence = np.random.SeedSequence([int(random_seed), 104729])
-        probability_sample_seeds = [
-            int(child.generate_state(1)[0])
-            for child in seed_sequence.spawn(int(config.lp_posterior_samples))
-        ]
+        probability_sample_seeds = posterior_sample_seeds(
+            random_seed, config.lp_posterior_samples
+        )
     else:
         observed = observed_quantities
         if observed is None and _uses_candidate_states(config):

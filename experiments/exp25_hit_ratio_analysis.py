@@ -19,7 +19,7 @@ is conditioned on the bound's own behaviour, never on the reference's power.
 ``paper/reproduce_experiment1_manylabs.sh`` runs ``--failures-as-manski``.
 
 This module is the orchestrator: the tables, the report and the command line. The
-loaders and metrics live in :mod:`experiments.hit_ratio_metrics` and are re-exported here.
+loaders and metrics live in :mod:`experiments.hit_ratio_metrics`.
 """
 
 from __future__ import annotations
@@ -44,38 +44,16 @@ from experiments.exp25_hit_ratio_plots import (
     make_width_hit_frontier_by_study_plot,
     width_hit_matched_table,
 )
-# The data layer, re-exported so its public names stay importable from here.
-from experiments.hit_ratio_metrics import (  # noqa: F401
-    INTERVALS_FILENAME,
+from experiments.latex_tables import render_latex_table
+from experiments.hit_ratio_metrics import (
     EXP25_KEY_COLUMNS,
-    EXP25_REQUIRED_COLUMNS,
-    BLEARNER_METHOD,
-    SELECTED_WIDTH_HIT_BETAS,
-    SELECTED_WIDTH_HIT_MODELS,
     SIGN_TABLE_MODELS,
-    PRIMARY_GAMMA_LABEL,
-    BASELINE_VARIANTS_DIRNAME,
-    GAMMA_LEAF_PREFIX,
-    MODEL_ORDER,
-    REFERENCE_BOUND_MODELS,
     FRONTIER_CONFIDENCE_LEVEL,
-    SIGN_POSITIVE,
-    SIGN_NEGATIVE,
-    SIGN_INCONCLUSIVE,
     SIGN_ORDER,
-    NEGATIVE_INDEX,
-    INCONCLUSIVE_INDEX,
-    POSITIVE_INDEX,
-    SIGN_COUNT_COLUMNS,
-    SIGN_METRIC_COLUMNS,
-    POINT_IDENTIFIED_WIDTH,
     discover_exp25_gamma_leaves,
     load_exp25_models,
-    interval_sign,
     annotate_reference_agreement,
     failures_as_manski,
-    sign_confusion_matrix,
-    sign_metrics_from_matrix,
     compute_sign_metrics,
     summarize_agreement,
     select_common_support,
@@ -233,10 +211,6 @@ def _manuscript_table_latex(
         LaTeX source, or an empty string when no listed model has usable
         common-support rows.
     """
-
-    # Lazy import: experiments.utils pulls in the Naturalness grounder, which
-    # would multiply this module's import time for one rendering helper.
-    from experiments.utils import render_latex_table
 
     present = set(annotated["model"].astype(str))
     models = [(model, label) for model, label in SIGN_TABLE_MODELS if model in present]

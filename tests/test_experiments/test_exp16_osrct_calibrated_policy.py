@@ -20,7 +20,8 @@ from experiments.osrct_target_pipeline import (
 )
 from experiments.exp16_osrct_calibrated_policy import parse_args
 from experiments.naturalness_plotting import make_exp16_plots
-from experiments.utils import DEFAULT_LP_POSTERIOR_N_JOBS, write_run_manifest
+from experiments.run_config import DEFAULT_LP_POSTERIOR_N_JOBS
+from experiments.run_manifest import write_run_manifest
 
 
 def test_exp16_does_not_import_removed_experiment_modules() -> None:

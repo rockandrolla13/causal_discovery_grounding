@@ -37,10 +37,6 @@ import numpy as np
 import pandas as pd
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
 from causal_grounding.paper_grids import floor_taus
 from causal_grounding.seeding import blake2b_uniform
 from experiments.benchmarks import atomic_write_parquet, format_beta
@@ -56,7 +52,7 @@ from experiments.mc_store import (
     parquet_safe,
 )
 from experiments.osrct_data_utils import load_prepared_data
-from experiments.utils import json_default, write_run_manifest
+from experiments.run_manifest import json_default, write_run_manifest
 
 
 EXP32_NAME = "exp32_manylabs_noise_candidates"
@@ -186,10 +182,6 @@ def _participant_key(site: Any, participant: Any) -> str:
     return f"{site}|{participant}"
 
 
-#: The BLAKE2b uniform scheme of the noise candidates; see :mod:`causal_grounding.seeding`.
-_uniform_from_key = blake2b_uniform
-
-
 def add_noise_candidates(
     frames: Sequence[pd.DataFrame],
     names: Sequence[str],
@@ -238,7 +230,7 @@ def add_noise_candidates(
         result = frame.copy()
         for index, name in enumerate(names, start=1):
             uniforms = np.array(
-                [_uniform_from_key(f"{seed}|{index}|{key}") for key in keys],
+                [blake2b_uniform(f"{seed}|{index}|{key}") for key in keys],
                 dtype=float,
             )
             result[name] = (uniforms < float(prevalence)).astype(int)

@@ -38,9 +38,6 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
-
 from experiments.hit_ratio_metrics import SIGN_TABLE_MODELS as EXP25_TABLE_MODELS
 from experiments.method_styles import (
     EXP25_MODEL_FOR_METHOD,
@@ -58,7 +55,7 @@ from experiments.naturalness_comparison import (
     rescore_with_manski_cap,
 )
 from experiments.naturalness_plotting import make_method_metric_by_beta_plot
-from experiments.utils import render_latex_table
+from experiments.latex_tables import render_latex_table
 
 
 LOGGER = logging.getLogger(__name__)

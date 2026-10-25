@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 
-import numpy as np
 import pandas as pd
 
 from .lp_solver_learned_naturalness import (
@@ -21,6 +20,7 @@ from .lp_solver_learned_naturalness import (
     TargetObservedBinaryQuantities,
     solve_target_bounds_from_observed_binary_quantities,
 )
+from .seeding import posterior_sample_seeds
 
 #: Target probability backends of
 #: :func:`~causal_grounding.estimate_target_observed_binary_quantities`.
@@ -37,8 +37,6 @@ TARGET_PROBABILITY_BACKENDS: frozenset[str] = frozenset(
 TARGET_PROBABILITY_DRAW_BACKENDS: frozenset[str] = frozenset(
     HIERARCHICAL_DIRICHLET_DRAW_BACKENDS
 )
-# Second entropy word of the per-draw target PMF seeds; exp16 uses the same.
-_PROBABILITY_SEED_SALT = 104729
 
 SolveDraw = Callable[[TargetObservedBinaryQuantities, pd.DataFrame], pd.DataFrame]
 DrawQuantities = Callable[[int], TargetObservedBinaryQuantities]
@@ -55,8 +53,7 @@ def target_probability_draw_seeds(random_seed: int, n_draws: int) -> list[int]:
         ``n_draws`` seeds, the ``posterior_sample_seed`` of draw ``k`` at
         position ``k``. Same derivation as Experiment I.
     """
-    sequence = np.random.SeedSequence([int(random_seed), _PROBABILITY_SEED_SALT])
-    return [int(child.generate_state(1)[0]) for child in sequence.spawn(int(n_draws))]
+    return posterior_sample_seeds(random_seed, n_draws)
 
 
 def _solve_draw(

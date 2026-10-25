@@ -14,7 +14,7 @@ name can do:
 * ``posterior_draws``: whether the name asks for one posterior draw of the
   fitted model instead of its point estimate.
 
-Every other backend list in the package and in ``experiments/utils.py`` derives
+Every other backend list in the package and in ``experiments/run_config.py`` derives
 from this registry. A new backend therefore needs one
 :func:`register_probability_backend` call. The built-in entries name their
 factories as ``"module:attribute"`` strings, so this module imports no model code,
