@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from experiments.utils import summarize_lp_posterior_bounds
+from experiments.lp_summaries import summarize_lp_posterior_bounds
 
 SNAPSHOT = Path(__file__).parent / "golden" / "lp_posterior_summary_seed0.csv"
 FLOAT_FORMAT = "%.10g"

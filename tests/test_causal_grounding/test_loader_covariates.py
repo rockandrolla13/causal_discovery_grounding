@@ -33,13 +33,11 @@ def test_polideo_bin_edge_cases() -> None:
 
 
 def test_thresholds_have_one_definition() -> None:
-    from experiments import utils
-
     assert covariates.DEFAULT_AGE_BINARY_THRESHOLD == 21.0
     assert covariates.DEFAULT_POLIDEO_BINARY_THRESHOLD == 3.0
     assert osrct.DEFAULT_AGE_BINARY_THRESHOLD is covariates.DEFAULT_AGE_BINARY_THRESHOLD
     assert manylabs_rct.DEFAULT_AGE_BINARY_THRESHOLD is covariates.DEFAULT_AGE_BINARY_THRESHOLD
-    for module in (utils, osrct, manylabs_rct):
+    for module in (osrct, manylabs_rct):
         assert (
             module.DEFAULT_POLIDEO_BINARY_THRESHOLD
             is covariates.DEFAULT_POLIDEO_BINARY_THRESHOLD
@@ -47,7 +45,7 @@ def test_thresholds_have_one_definition() -> None:
 
 
 def test_experiment_utils_uses_loader_derivations() -> None:
-    from experiments import utils
+    from experiments import covariate_preparation
 
-    assert utils.derive_age_bin is covariates.derive_age_bin
-    assert utils.derive_polideo_bin is covariates.derive_polideo_bin
+    assert covariate_preparation.derive_age_bin is covariates.derive_age_bin
+    assert covariate_preparation.derive_polideo_bin is covariates.derive_polideo_bin

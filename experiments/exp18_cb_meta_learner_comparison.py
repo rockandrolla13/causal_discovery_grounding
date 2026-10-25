@@ -42,7 +42,6 @@ parallelism does not oversubscribe the Kubernetes CPU allocation.
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import os
 import sys
@@ -56,9 +55,6 @@ import numpy as np
 import pandas as pd
 from scipy.special import logit
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
 
 from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from causal_grounding.naturalness_grounder import SUPPORTED_GP_FEATURE_MODES
@@ -107,7 +103,10 @@ from experiments.naturalness_plotting import (
     _set_study_panel_axis_labels,
 )
 from experiments.osrct_data_utils import load_prepared_data
-from experiments.utils import json_default, write_run_manifest
+from experiments.osrct_files import load_osrct_benchmark_module
+from experiments.run_manifest import json_default, write_run_manifest
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 PAPER_METHODS = ("cb_pi", "cb_ra", "cb_ipw", "cb_dr")
@@ -787,8 +786,6 @@ def _exp16_config(config: Exp18Config, study: str) -> Exp16Config:
     )
 
 
-
-
 def _load_fitting_data(
     config: Exp18Config,
     data_source: Literal["exp16"],
@@ -1158,16 +1155,11 @@ def _osrct_pattern_preferred_probability(
         ValueError: If the pattern is absent from the benchmark grid.
     """
 
-    code_dir = PROJECT_ROOT / "osrct_benchmark_v1.0" / "code"
-    if str(code_dir) not in sys.path:
-        sys.path.insert(0, str(code_dir))
-    pattern_configs = importlib.import_module(
-        "experimental_grid"
-    ).COVARIATE_PATTERNS
+    pattern_configs = load_osrct_benchmark_module("experimental_grid").COVARIATE_PATTERNS
     if pattern not in pattern_configs:
         raise ValueError(f"Unknown OSRCT pattern for DGP Gamma: {pattern!r}")
     pattern_config = pattern_configs[pattern]
-    sampler_class = importlib.import_module("osrct").OSRCTSampler
+    sampler_class = load_osrct_benchmark_module("osrct").OSRCTSampler
     sampler = sampler_class(
         biasing_covariates=pattern_config["covariates"],
         biasing_coefficients=pattern_config["coefficients"](float(beta)),

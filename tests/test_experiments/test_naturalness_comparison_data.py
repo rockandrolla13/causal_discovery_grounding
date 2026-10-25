@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from causal_grounding.seeding import crc32_seed
 from experiments import naturalness_comparison_data as data
 
 
@@ -44,8 +45,8 @@ def test_passthrough_rejects_nonbinary_values() -> None:
 
 def test_seed_and_selection_are_reproducible() -> None:
     """Stable seeds reproduce regime selection across interpreter processes."""
-    assert data.stable_seed("twins", 1, 0.5) == data.stable_seed("twins", 1, 0.5)
-    assert data.stable_seed("twins", 1, 0.5) != data.stable_seed("twins", 1, 2.0)
+    assert crc32_seed("twins", 1, 0.5) == crc32_seed("twins", 1, 0.5)
+    assert crc32_seed("twins", 1, 0.5) != crc32_seed("twins", 1, 2.0)
     candidate = np.tile([0, 1], 1000)
     treatment = np.tile([0, 1, 1, 0], 500)
     first = data.osrct_select(candidate, treatment, 2.0, np.random.default_rng(19))

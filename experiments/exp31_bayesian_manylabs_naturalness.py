@@ -49,13 +49,11 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
 
-from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN  # noqa: E402
-from causal_grounding import balke_pearl  # noqa: E402
-from causal_grounding import bayesian_modular_naturalness as bayes  # noqa: E402
-from causal_grounding.bayesian_modular_naturalness import (  # noqa: E402
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
+from causal_grounding import balke_pearl
+from causal_grounding import bayesian_modular_naturalness as bayes
+from causal_grounding.bayesian_modular_naturalness import (
     GP_NUGGET,
     compute_source_evidence,
     draw_random_identified_sets,
@@ -68,14 +66,16 @@ from causal_grounding.bayesian_modular_naturalness import (  # noqa: E402
     raw_pmf_draws_from_frame,
     raw_pmf_draws_to_frame,
 )
-from causal_grounding.naturalness_statistics import safe_sorted  # noqa: E402
-from causal_grounding.paper_grids import PAPER_BETAS  # noqa: E402
-from causal_grounding.predictors import TABICL_V2_CLASSIFIER_CHECKPOINT  # noqa: E402
-from causal_grounding.seeding import sha256_seed  # noqa: E402
-from causal_grounding.train_target_split import create_train_target_split  # noqa: E402
-from experiments.osrct_target_pipeline import Exp16Config, split_site_regimes  # noqa: E402
-from experiments.osrct_data_utils import load_prepared_data  # noqa: E402
-from experiments.utils import write_run_manifest  # noqa: E402
+from causal_grounding.naturalness_statistics import safe_sorted
+from causal_grounding.paper_grids import PAPER_BETAS
+from causal_grounding.predictors import TABICL_V2_CLASSIFIER_CHECKPOINT
+from causal_grounding.seeding import sha256_seed
+from causal_grounding.train_target_split import create_train_target_split
+from experiments.osrct_target_pipeline import Exp16Config, split_site_regimes
+from experiments.osrct_data_utils import load_prepared_data
+from experiments.run_manifest import write_run_manifest
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 LOGGER = logging.getLogger(__name__)
@@ -296,7 +296,13 @@ SOURCE_FILES = (
     "experiments/osrct_target_pipeline.py",
     "experiments/exp25_osrct_mc_baseline_comparison.py",
     "experiments/osrct_data_utils.py",
-    "experiments/utils.py",
+    "experiments/osrct_files.py",
+    "experiments/covariate_preparation.py",
+    "experiments/run_config.py",
+    "experiments/conformal_bounds.py",
+    "experiments/lp_summaries.py",
+    "experiments/run_manifest.py",
+    "experiments/latex_tables.py",
     "osrct_benchmark_v1.0/code/generate_confounded_datasets.py",
     "osrct_benchmark_v1.0/code/osrct.py",
     "osrct_benchmark_v1.0/code/experimental_grid.py",

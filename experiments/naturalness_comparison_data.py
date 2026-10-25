@@ -17,14 +17,9 @@ import zlib
 import numpy as np
 import pandas as pd
 
-from causal_grounding.seeding import crc32_seed
-
 
 LOGGER = logging.getLogger(__name__)
 MISSING_CODE = 255
-
-#: The CRC32 seed scheme of the comparison; see :mod:`causal_grounding.seeding`.
-stable_seed = crc32_seed
 
 
 # --------------------------------------------------------------------------

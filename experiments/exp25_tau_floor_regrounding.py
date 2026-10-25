@@ -45,10 +45,6 @@ import yaml
 from scipy import stats
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
 import experiments.osrct_target_pipeline as target_pipeline
 from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from causal_grounding.lp_solver_learned_naturalness import (
@@ -77,15 +73,15 @@ from experiments.mc_store import (
     parquet_safe as _parquet_safe,
 )
 from experiments.osrct_data_utils import load_prepared_data
-from experiments.utils import (
+from experiments.latex_tables import render_latex_table
+from experiments.run_config import (
     build_configured_naturalness_grounder,
     build_lp_probability_model_kwargs,
-    json_default,
-    render_latex_table,
     resolve_lp_probability_backend,
     resolve_target_trigger_probability_backend,
     uses_hierarchical_dirichlet_draws,
 )
+from experiments.run_manifest import json_default
 
 
 #: Tau floors: 0.01 keeps Exp25's grid (the replay check); 0.05 drops tau = 0.01; 0.075 also drops 0.05.

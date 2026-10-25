@@ -23,9 +23,9 @@ Schemes and their users:
   Used by :mod:`experiments.exp32_manylabs_noise_candidates` to draw the
   synthetic noise candidates.
 * :func:`posterior_sample_seeds` -- children of
-  ``SeedSequence([random_seed, POSTERIOR_SAMPLE_SEED_SALT])``. The same
-  derivation sits inline in :mod:`experiments.exp16_osrct_calibrated_policy`
-  and in :func:`causal_grounding.target_bounds.target_probability_draw_seeds`.
+  ``SeedSequence([random_seed, POSTERIOR_SAMPLE_SEED_SALT])``. Used by
+  :mod:`experiments.osrct_target_pipeline` and by
+  :func:`causal_grounding.target_bounds.target_probability_draw_seeds`.
 * Integer offsets -- not a function here. ``config.seed + 20_000 +
   target_index`` seeds the per-target grounders of exp16, exp25 and exp32.
   :mod:`experiments.exp25_tau_floor_regrounding` adds

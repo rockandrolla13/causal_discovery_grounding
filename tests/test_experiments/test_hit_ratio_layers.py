@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 import experiments.exp25_bootstrap_analysis as bootstrap
-import experiments.exp25_hit_ratio_analysis as analysis
 import experiments.exp25_hit_ratio_plots as plots
 import experiments.hit_ratio_metrics as metrics
 import experiments.method_styles as styles
@@ -45,21 +44,6 @@ def test_shared_layers_import_no_experiment_script(module: str) -> None:
 @pytest.mark.parametrize("module", ["exp25_hit_ratio_plots", "exp25_bootstrap_analysis"])
 def test_plots_and_bootstrap_do_not_import_the_orchestrator(module: str) -> None:
     assert "exp25_hit_ratio_analysis" not in _experiment_imports(module)
-
-
-def test_orchestrator_re_exports_the_data_layer() -> None:
-    tree = ast.parse((EXPERIMENTS / "hit_ratio_metrics.py").read_text(encoding="utf-8"))
-    public = [
-        node.name if isinstance(node, ast.FunctionDef) else node.targets[0].id
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-        or (isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name))
-    ]
-    # The bootstrap defaults were never importable from the orchestrator.
-    public = [name for name in public if not name.startswith(("_", "DEFAULT_"))]
-    assert len(public) > 30
-    for name in public:
-        assert getattr(analysis, name) is getattr(metrics, name), name
 
 
 def test_bootstrap_defaults_have_one_definition() -> None:

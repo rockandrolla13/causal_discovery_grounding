@@ -11,17 +11,16 @@ from causal_grounding.loaders.cohort import (
     OBSERVED_GENDER_COHORT_RULE,
     restrict_to_observed_gender,
 )
-from experiments.exp16_osrct_calibrated_policy import Exp16Config
-from experiments import run_config
-from experiments.utils import (
+from experiments.osrct_target_pipeline import Exp16Config
+from experiments.latex_tables import render_latex_table
+from experiments.lp_summaries import summarize_lp_posterior_bounds
+from experiments.run_config import (
     ProbabilityModelOptions,
     build_configured_naturalness_grid,
     build_lp_probability_model_kwargs,
     build_stage1_predictor_kwargs,
-    render_latex_table,
     resolve_lp_probability_backend,
     resolve_target_trigger_probability_backend,
-    summarize_lp_posterior_bounds,
 )
 
 
@@ -207,14 +206,3 @@ def test_exp16_config_options_are_all_declared() -> None:
 
     assert options.tabicl_device == "cpu"
     assert options.tabicl_share_checkpoint is False
-
-
-def test_utils_re_exports_split_module_objects() -> None:
-    """The compatibility module re-exports the split modules' own objects."""
-
-    import experiments.utils as utils
-
-    assert utils.build_stage1_predictor_kwargs is run_config.build_stage1_predictor_kwargs
-    assert utils.SUPPORTED_LP_PROBABILITY_BACKENDS is (
-        run_config.SUPPORTED_LP_PROBABILITY_BACKENDS
-    )

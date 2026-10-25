@@ -34,7 +34,7 @@ from causal_grounding.lp_solver_learned_naturalness import (
 )
 from causal_grounding.train_target_split import create_train_target_split
 from experiments.osrct_target_pipeline import Exp16Config, run_one_target
-from experiments.utils import build_lp_probability_model_kwargs
+from experiments.run_config import build_lp_probability_model_kwargs
 
 GOLDEN_DIR = Path(__file__).parent / "golden" / "exp16_run_one_target"
 PMF_SNAPSHOT = GOLDEN_DIR / "hierarchical_dirichlet_draws_target_pmfs.csv"

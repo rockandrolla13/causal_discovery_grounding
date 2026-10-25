@@ -24,72 +24,20 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from typing import Sequence
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
-
 from causal_grounding.naturalness_grounder import SUPPORTED_GP_FEATURE_MODES
-from experiments.utils import (
+from experiments.run_config import (
     SUPPORTED_STAGE1_BACKENDS,
     SUPPORTED_LP_PROBABILITY_BACKENDS,
     SUPPORTED_TARGET_TRIGGER_PROBABILITY_BACKENDS,
 )
-
-# The library half moved to experiments.osrct_target_pipeline. These
-# re-exports keep ``from experiments.exp16_osrct_calibrated_policy import X``
-# working for existing callers, tests and notebooks.
-from experiments.osrct_target_pipeline import (  # noqa: F401
-    DEFAULT_EXP16_BETAS,
-    DEFAULT_EXP16_PATTERNS,
-    DEFAULT_EXP16_STUDIES,
+from experiments.osrct_target_pipeline import (
     DEFAULT_GP_POSTERIOR_SAMPLES,
-    DEFAULT_POLICY_TOP_K_VALUES,
-    MAX_BINARY_CATE_ENDPOINT_RESIDUAL,
     SUPPORTED_CANDIDATE_SELECTION_MODES,
     SUPPORTED_GP_POLICY_UNCERTAINTIES,
     Exp16Config,
-    _calibrate_endpoint_q_if_enabled,
-    _candidate_state_map,
-    _fit_grounder_for_sites,
-    _fit_grounders_and_select_policy,
-    _leaf_output_dir,
-    _output_group_key,
-    _run_output_dir,
-    _summarize_target_trigger_grid,
-    _uses_candidate_states,
-    build_empirical_rct_cate_labels,
-    build_policy_candidates,
-    calibrate_endpoint_q,
-    complete_lp_strata,
-    estimate_target_trigger_quantities,
-    evaluate_policy_site,
-    finalize_policy_choices,
-    fit_reusable_tabicl_target_quantities,
-    grounder_gp_diagnostics,
     run_experiment,
-    run_one_target,
-    score_gp_posterior_summary,
-    score_rct_intervals,
-    select_policy_choices,
-    select_top_k_choices,
-    solve_choices_lp,
-    solve_choices_lp_posterior_samples,
-    split_site_regimes,
-    split_source_roles,
-    summarize_target,
-    tune_policy_top_k,
-    weighted_interval_width,
-)
-from experiments.osrct_target_pipeline import (  # noqa: F401
-    build_policy_candidates as _policy_candidates,
-    estimate_target_trigger_quantities as _estimate_target_trigger_quantities,
-    finalize_policy_choices as _finalize_policy_choices,
-    fit_reusable_tabicl_target_quantities as _fit_reusable_tabicl_target_quantities,
-    grounder_gp_diagnostics as _grounder_gp_diagnostics,
-    split_site_regimes as _split_site_regimes,
 )
 
 

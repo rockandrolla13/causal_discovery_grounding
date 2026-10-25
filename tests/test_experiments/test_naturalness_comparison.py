@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from causal_grounding.manski import manski_bounds
 from experiments import naturalness_comparison as comparison
 from experiments import exp28_twins_method_comparison as exp28
 
@@ -263,7 +264,7 @@ def test_latent_assignment_mechanism_is_refused_rather_than_ignored() -> None:
 def test_manski_absent_arm_is_retained() -> None:
     """One-arm and missing cells retain their unobserved outcome mass."""
     target = pd.DataFrame({"z": [0, 0], "iv": [1, 1], "dv_binary": [1, 0]})
-    result = comparison.manski_bounds(
+    result = manski_bounds(
         target, pd.DataFrame({"z": [0, 1]}), ("z",), 1
     )
     np.testing.assert_allclose(result.lower, [-0.5, -1.0])
@@ -382,7 +383,7 @@ def test_the_runner_caps_both_blearner_arms_before_scoring(tmp_path, monkeypatch
     strata = pd.DataFrame({"z": [0, 1]})
     target_idle = pd.DataFrame({"z": [0, 0, 1, 1] * 10, "iv": [0, 1] * 20,
                                 "dv_binary": [0, 1, 1, 0] * 10})
-    baseline = comparison.manski_bounds(target_idle, strata, ("z",), 1)
+    baseline = manski_bounds(target_idle, strata, ("z",), 1)
 
     def widest(target_idle, strata, covariates, gamma, *args):
         """Stand in for the B-Learner with an interval spanning [-1, 1]."""

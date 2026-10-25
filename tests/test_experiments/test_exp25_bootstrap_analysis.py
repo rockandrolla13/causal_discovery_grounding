@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 import experiments.exp25_bootstrap_analysis as bootstrap
-import experiments.exp25_hit_ratio_analysis as analysis
+import experiments.hit_ratio_metrics as hit_metrics
 
 from tests.test_experiments.test_exp25_hit_ratio_analysis import (
     _interval_fixture,
@@ -45,7 +45,7 @@ def _multi_replication_annotated(n_replications: int = 6) -> pd.DataFrame:
         )
         frames.append(pd.concat([shared, blearner], ignore_index=True, sort=False))
     models = pd.concat(frames, ignore_index=True, sort=False)
-    return analysis.annotate_reference_agreement(models)
+    return hit_metrics.annotate_reference_agreement(models)
 
 
 def test_replication_confusion_matrices_align_to_the_given_order() -> None:
@@ -61,7 +61,7 @@ def test_replication_confusion_matrices_align_to_the_given_order() -> None:
     # Summing the per-replication matrices reproduces the pooled matrix, which
     # is the identity the bootstrap relies on.
     assert matrices[:3].sum(axis=0) == pytest.approx(
-        analysis.sign_confusion_matrix(naturalness)
+        hit_metrics.sign_confusion_matrix(naturalness)
     )
 
 
@@ -72,7 +72,7 @@ def test_bootstrap_estimates_match_the_pooled_summary() -> None:
     outputs = bootstrap.bootstrap_sign_metrics(
         annotated, grouping=("beta",), bootstrap_replicates=200, seed=7
     )
-    pooled = analysis.summarize_agreement(annotated, grouping=("beta",))
+    pooled = hit_metrics.summarize_agreement(annotated, grouping=("beta",))
     metrics = outputs.metric_summary
     assert not metrics.empty
     for metric in ("sign_correct_rate", "decisiveness_rate", "sign_reversal_rate"):
