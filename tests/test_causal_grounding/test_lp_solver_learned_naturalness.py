@@ -6,6 +6,7 @@ import pytest
 
 import causal_grounding.lp_solver_learned_naturalness as learned_lp
 from causal_grounding.lp_solver_learned_naturalness import (
+    TargetObservedBinaryQuantities,
     estimate_target_observed_binary_quantities,
     solve_candidate_state_bounds_from_observed_binary_quantities,
     solve_target_bounds_from_observed_binary_quantities,
@@ -821,3 +822,106 @@ def test_candidate_state_bounds_reject_unknown_states():
             {("a",): quantities[("a",)]}, [_state_choice("n1", 0.1, 0.1)],
             candidate_states=STATE_MAP, reporting_covariates=["a"],
         )
+
+
+def _direct_quantities(p_x1, q_y0, q_y1):
+    """Build two-stratum target quantities directly, bypassing estimation."""
+    z_values = [(0,), (1,)]
+    return TargetObservedBinaryQuantities(
+        covariates=["Z"],
+        z_values=z_values,
+        p_x1=dict(zip(z_values, p_x1)),
+        p_x0={z: 1.0 - p for z, p in zip(z_values, p_x1)},
+        p_y1_given_xz={
+            **{(0, z): q for z, q in zip(z_values, q_y0)},
+            **{(1, z): q for z, q in zip(z_values, q_y1)},
+        },
+        n_z={z: 100 for z in z_values},
+        n_xz={(x, z): 50 for x in (0, 1) for z in z_values},
+    )
+
+
+def test_infeasible_lp_reports_infeasible_status_and_nan_endpoints():
+    """Factual outcomes 0.7 apart under ``2c=0.1`` leave no feasible theta."""
+    quantities = _direct_quantities([0.2, 0.8], q_y0=[0.2, 0.2], q_y1=[0.7, 0.0])
+    details = solve_target_bounds_from_observed_binary_quantities(
+        quantities,
+        make_choice(two_c=0.1, two_d=1.0),
+        return_details=True,
+    )
+
+    assert set(details["status"]) == {"nonoptimal"}
+    for column in ["lower_status", "upper_status", "mu0_lower_status", "mu1_upper_status"]:
+        assert set(details[column]) == {"infeasible"}
+    assert details[["lower", "upper", "mu0_lower", "mu1_upper"]].isna().all().all()
+
+
+def test_degenerate_propensities_are_pinned_by_the_d_constraint():
+    """With ``p(x|z)`` in {0,1}, zero ``2d`` carries each factual mean across Z."""
+    quantities = _direct_quantities([0.0, 1.0], q_y0=[0.2, 0.2], q_y1=[0.7, 0.7])
+    tight = solve_target_bounds_from_observed_binary_quantities(
+        quantities, make_choice(two_c=0.0, two_d=0.0), return_details=True,
+    )
+    loose = solve_target_bounds_from_observed_binary_quantities(
+        quantities, make_choice(two_c=1.0, two_d=1.0), return_details=True,
+    )
+
+    assert set(tight["status"]) == {"optimal"}
+    assert np.allclose(tight["lower"], 0.5)
+    assert np.allclose(tight["upper"], 0.5)
+    # Without cross-stratum information each untreated-only or treated-only
+    # stratum reverts to Manski bounds around its one observed intervention mean.
+    assert np.allclose(loose["lower"], [-0.2, -0.3])
+    assert np.allclose(loose["upper"], [0.8, 0.7])
+
+
+def test_degenerate_outcome_probabilities_give_valid_unit_width_bounds():
+    """Factual outcomes at 0 and 1 with equal propensities stay unidentified."""
+    quantities = _direct_quantities([0.5, 0.5], q_y0=[0.0, 0.0], q_y1=[1.0, 1.0])
+    details = solve_target_bounds_from_observed_binary_quantities(
+        quantities, make_choice(two_c=0.0, two_d=0.0), return_details=True,
+    )
+
+    assert set(details["status"]) == {"optimal"}
+    assert np.allclose(details["lower"], 0.0)
+    assert np.allclose(details["upper"], 1.0)
+    assert np.allclose(details["mu0_upper"], 0.5)
+    assert np.allclose(details["mu1_lower"], 0.5)
+
+
+@pytest.mark.parametrize(
+    ("p_x1", "q_y1", "match"),
+    [
+        ([0.2, 0.8], [0.7, np.nan], "b_eq"),
+        ([np.nan, 0.8], [0.7, 0.7], "c must not"),
+    ],
+)
+def test_nan_target_probabilities_raise_from_linprog(p_x1, q_y1, match):
+    """NaN outcome or propensity inputs fail loudly instead of returning bounds."""
+    quantities = _direct_quantities(p_x1, q_y0=[0.2, 0.2], q_y1=q_y1)
+    with pytest.raises(ValueError, match=match):
+        solve_target_bounds_from_observed_binary_quantities(
+            quantities, make_choice(two_c=0.0, two_d=0.0), return_details=True,
+        )
+
+
+def test_nan_tolerance_choice_is_dropped_before_the_lp():
+    """A choice with NaN ``two_c`` contributes no constraints at all."""
+    quantities = _direct_quantities([0.2, 0.8], q_y0=[0.2, 0.2], q_y1=[0.7, 0.7])
+    nan_choice = make_choice(two_c=np.nan, two_d=0.0)
+    loose = make_choice(two_c=1.0, two_d=1.0)
+
+    alone = solve_target_bounds_from_observed_binary_quantities(
+        quantities, nan_choice, return_details=True,
+    )
+    mixed = solve_target_bounds_from_observed_binary_quantities(
+        quantities, [nan_choice, loose], return_details=True,
+    )
+    loose_only = solve_target_bounds_from_observed_binary_quantities(
+        quantities, loose, return_details=True,
+    )
+
+    assert alone.empty
+    assert int(mixed.loc[0, "n_choices"]) == 1
+    np.testing.assert_allclose(mixed["lower"], loose_only["lower"])
+    np.testing.assert_allclose(mixed["upper"], loose_only["upper"])

@@ -2346,6 +2346,8 @@ def draw_rct_reference_posterior(
             })
         common = [z for z in z_values if z in target_draw.idle_z]
         total = float(sum(target_draw.idle_z[z] for z in common))
+        if total <= 0.0:
+            raise ValueError("Held-out RCT strata have zero target posterior mass")
         ate = float(sum(target_draw.idle_z[z] * cate[z] for z in common) / total)
         rows.append({
             "reference_draw_index": draw_index,
