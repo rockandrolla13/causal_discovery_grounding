@@ -65,7 +65,7 @@ from experiments.exp16_osrct_calibrated_policy import (
     DEFAULT_EXP16_STUDIES,
     Exp16Config,
 )
-from experiments.manylabs_cohort import OBSERVED_GENDER_COHORT_RULE
+from causal_grounding.loaders.cohort import OBSERVED_GENDER_COHORT_RULE
 from experiments.benchmarks import (
     BLEARNER_BINARY_SEARCH_GAMMA_TOLERANCE,
     BLEARNER_BINARY_SEARCH_GRID,

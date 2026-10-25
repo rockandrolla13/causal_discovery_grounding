@@ -34,6 +34,7 @@ from matplotlib.patches import Patch
 from matplotlib.ticker import MaxNLocator, PercentFormatter
 from scipy.stats import binomtest
 
+from causal_grounding.paper_grids import PAPER_BETAS
 from experiments.exp25_hit_ratio_analysis import (
     EXP25_KEY_COLUMNS,
     MODEL_ORDER,
@@ -42,7 +43,7 @@ from experiments.exp25_hit_ratio_analysis import (
     common_support_frontier,
     run_analysis,
 )
-from experiments.interval_stats import WILSON_Z, wilson_interval  # noqa: F401  (re-exported)
+from experiments.interval_stats import wilson_interval
 
 
 NATURALNESS_MODEL = "naturalness"
@@ -73,7 +74,7 @@ FRONTIER_SD_COLUMNS = ("mean_width_sd", "hit_ratio_sd")
 FRONTIER_SPREAD_SUFFIXES = {"ci": "", "sd": "_sd"}
 # Confounding levels drawn in the per-study frontier, when present; below them
 # Naturalness lies outside the swept Gamma grid, so no matched comparison exists.
-STUDY_FRONTIER_BETAS = (0.5, 1.0, 1.5, 2.0)
+STUDY_FRONTIER_BETAS = PAPER_BETAS
 # Vector output by default: the panels are sharp at any zoom and in print.
 DEFAULT_PLOT_FORMATS = ("pdf",)
 # Resolution for raster output, and for the raster parts embedded in vector

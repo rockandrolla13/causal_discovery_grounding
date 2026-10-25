@@ -17,7 +17,6 @@ import numpy as np
 import pandas as pd
 from sklearn.exceptions import ConvergenceWarning, NotFittedError
 
-from .bayesian_modular_naturalness import DEFAULT_EPSILONS, DEFAULT_TAUS
 from .loaders.contract import SiteBundle
 from .lp_solver_learned_naturalness import (
     estimate_target_observed_binary_quantities,
@@ -29,14 +28,7 @@ from .naturalness_target_policy import (
     TargetNaturalnessPolicyResult,
 )
 
-#: Smallest relevance threshold ``tau`` of the paper's experiments.
-MIN_RELEVANCE_TAU = 0.075
-#: Naturalness thresholds ``epsilon`` of the paper's experiments.
-PAPER_EPSILONS: tuple[float, ...] = tuple(DEFAULT_EPSILONS)
-#: Relevance grid ``tau >= 0.075`` of the paper's experiments.
-PAPER_TAUS: tuple[float, ...] = tuple(
-    tau for tau in DEFAULT_TAUS if tau >= MIN_RELEVANCE_TAU
-)
+from .paper_grids import MIN_RELEVANCE_TAU, PAPER_EPSILONS, PAPER_TAUS  # noqa: F401  re-exported
 
 SourceData = Mapping[str, pd.DataFrame] | pd.DataFrame | SiteBundle
 

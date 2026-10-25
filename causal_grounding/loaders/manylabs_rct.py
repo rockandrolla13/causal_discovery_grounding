@@ -26,7 +26,12 @@ import numpy as np
 import pandas as pd
 
 from .contract import RawDataset, SiteBundle, SiteTable
-from .covariates import DEFAULT_AGE_BINARY_THRESHOLD, derive_age_bin
+from .covariates import (
+    DEFAULT_AGE_BINARY_THRESHOLD,
+    DEFAULT_POLIDEO_BINARY_THRESHOLD,
+    derive_age_bin,
+    derive_polideo_bin,
+)
 from .osrct import (
     COVARIATES,
     OUTCOME,
@@ -35,7 +40,6 @@ from .osrct import (
     SUPPORTED_STUDIES,
     TREATMENT,
     UNIT_ID,
-    DEFAULT_POLIDEO_BINARY_THRESHOLD,
 )
 
 logger = logging.getLogger(__name__)
@@ -152,10 +156,9 @@ class ManyLabsRCTLoader:
         result["resp_age_bin"] = derive_age_bin(
             result["resp_age"], self.age_threshold
         )
-        result["resp_polideo_bin"] = (
-            pd.to_numeric(result["resp_polideo"], errors="coerce")
-            > self.polideo_threshold
-        ).astype(int)
+        result["resp_polideo_bin"] = derive_polideo_bin(
+            result["resp_polideo"], self.polideo_threshold
+        )
 
         self._positive_value = float(positive_value)
         return result

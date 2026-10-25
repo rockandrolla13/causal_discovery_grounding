@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from experiments.manylabs_cohort import (
+from causal_grounding.loaders.cohort import (
     OBSERVED_GENDER_COHORT_RULE,
     restrict_to_observed_gender,
 )

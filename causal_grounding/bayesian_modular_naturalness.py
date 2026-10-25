@@ -48,8 +48,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_COVARIATES = ("z_clean", "z_bad")
-DEFAULT_EPSILONS = (0.01, 0.025, 0.05, 0.075, 0.10, 0.15, 0.20, 0.50)
-DEFAULT_TAUS = (0.01, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30)
+from .paper_grids import EPSILON_GRID as DEFAULT_EPSILONS
+from .paper_grids import TAU_GRID as DEFAULT_TAUS
 NUMERICAL_PROBABILITY_FLOOR = 1e-6
 # Nugget nu of the Gaussian-copula latent correlation, R = (1 - nu) K + nu I.
 # R keeps a unit diagonal, so every tolerance margin stays Uniform(0, 1), and its
