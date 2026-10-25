@@ -1,0 +1,4 @@
+beta,covariate,covariate_index,d_strength,endpoint_calibration_performed,fit_gp,i_deviation,lp_intervention_diagnostics_computed,lp_probability_backend,n_grid_points,n_target_rows,n_triggered_grid_points,n_z_minus_evaluated,pattern,policy_tuning_performed,rct_min_arm_count,stage1_backend,study,target_policy_confidence_level,target_policy_uncertainty,target_probability_source,target_site,target_trigger_probability_backend,target_triggered_any
+1,resp_age_bin,0,0.06730769231,True,False,0.45,True,empirical,56,156,2,4,p,True,5,hierarchical_dirichlet,s,0.95,posterior_mean,empirical,pi,empirical,True
+1,resp_gender_bin,1,0.04761904762,True,False,0.25,True,empirical,56,156,1,4,p,True,5,hierarchical_dirichlet,s,0.95,posterior_mean,empirical,pi,empirical,True
+1,resp_polideo_bin,2,0.09523809524,True,False,0.25,True,empirical,56,156,3,4,p,True,5,hierarchical_dirichlet,s,0.95,posterior_mean,empirical,pi,empirical,True
