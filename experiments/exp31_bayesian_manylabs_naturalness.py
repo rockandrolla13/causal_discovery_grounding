@@ -68,6 +68,7 @@ from causal_grounding.bayesian_modular_naturalness import (  # noqa: E402
     raw_pmf_draws_to_frame,
 )
 from causal_grounding.naturalness_statistics import safe_sorted  # noqa: E402
+from causal_grounding.paper_grids import PAPER_BETAS  # noqa: E402
 from causal_grounding.predictors import TABICL_V2_CLASSIFIER_CHECKPOINT  # noqa: E402
 from causal_grounding.train_target_split import create_train_target_split  # noqa: E402
 from experiments.exp16_osrct_calibrated_policy import Exp16Config, _split_site_regimes  # noqa: E402
@@ -89,7 +90,7 @@ STUDIES = ("allowedforbidden", "gainloss")
 ALL_STUDIES = STUDIES + DEFERRED_STUDIES
 PATTERNS = ("age", "gender", "polideo")
 #: OSRCT selection strengths: the beta grid of the Exp25 results the report's Exp25 bridge reads.
-BETAS = (0.5, 1.0, 1.5, 2.0)
+BETAS = PAPER_BETAS
 N_REPLICATIONS = 20
 BASE_SEED = 62
 SEEDS = tuple(BASE_SEED + replication for replication in range(N_REPLICATIONS))
@@ -282,6 +283,7 @@ SOURCE_FILES = (
     "causal_grounding/naturalness_grounder.py",
     "causal_grounding/predictors.py",
     "causal_grounding/naturalness_statistics.py",
+    "causal_grounding/paper_grids.py",
     "causal_grounding/balke_pearl.py",
     "causal_grounding/train_target_split.py",
     "causal_grounding/loaders/manylabs_rct.py",
@@ -291,7 +293,6 @@ SOURCE_FILES = (
     "experiments/exp16_osrct_calibrated_policy.py",
     "experiments/exp25_osrct_mc_baseline_comparison.py",
     "experiments/osrct_data_utils.py",
-    "experiments/manylabs_cohort.py",
     "experiments/utils.py",
     "osrct_benchmark_v1.0/code/generate_confounded_datasets.py",
     "osrct_benchmark_v1.0/code/osrct.py",
@@ -5250,8 +5251,8 @@ def width_by_beta_table(
         DEFAULT_BOOTSTRAP_REPLICATES,
         DEFAULT_BOOTSTRAP_SEED,
         DEFAULT_CONFIDENCE_LEVEL,
-        _percentile_interval,
     )
+    from experiments.interval_stats import percentile_interval
 
     keys = ["study", "pattern", "beta"] if by_pattern else ["study", "beta"]
     posterior = ["naturalness_width_posterior_lower", "naturalness_width_posterior_upper"]
@@ -5279,7 +5280,7 @@ def width_by_beta_table(
             lower = upper = np.nan
             if means.size:
                 sampled = rng.integers(0, means.size, size=(DEFAULT_BOOTSTRAP_REPLICATES, means.size))
-                lower, upper = _percentile_interval(means[sampled].mean(axis=1), DEFAULT_CONFIDENCE_LEVEL)
+                lower, upper = percentile_interval(means[sampled].mean(axis=1), DEFAULT_CONFIDENCE_LEVEL)
             rows.append({
                 **dict(zip(keys, values)),
                 "method": method,

@@ -42,6 +42,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from causal_grounding.paper_grids import floor_taus
 from experiments.benchmarks import atomic_write_parquet, format_beta
 from experiments.exp16_osrct_calibrated_policy import Exp16Config, run_one_target
 from experiments.exp25_osrct_mc_baseline_comparison import (
@@ -150,14 +151,6 @@ class Exp32Config:
             np.isfinite(float(self.tau_floor)) and float(self.tau_floor) >= 0.0
         ):
             raise ValueError("tau_floor must be finite and nonnegative")
-
-
-def floor_taus(taus: Sequence[float], floor: float) -> tuple[float, ...]:
-    """Return the tau grid values at or above ``floor``."""
-    kept = tuple(float(t) for t in taus if float(t) >= float(floor) - 1e-12)
-    if not kept:
-        raise ValueError(f"No tau value is at or above floor {floor}")
-    return kept
 
 
 def noise_candidate_names(n_noise: int) -> tuple[str, ...]:

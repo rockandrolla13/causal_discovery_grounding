@@ -30,6 +30,7 @@ from typing import Callable, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
+from causal_grounding.paper_grids import PAPER_BETAS
 from experiments.interval_stats import percentile_interval
 
 INTERVALS_FILENAME = "mc_intervals.parquet"
@@ -65,7 +66,7 @@ BLEARNER_METHOD = "blearner"
 ANNOTATED_ROWS_FILENAME = "exp25_annotated_rows.parquet"
 SELECTED_WIDTH_HIT_FILENAME = "exp25_selected_method_width_hit_summary.csv"
 # Reported when present; a run without some of them simply has fewer rows.
-SELECTED_WIDTH_HIT_BETAS = (0.5, 1.0, 1.5, 2.0)
+SELECTED_WIDTH_HIT_BETAS = PAPER_BETAS
 SELECTED_WIDTH_HIT_MODELS = (
     ("Naturalness", "naturalness"),
     ("B-Learner Γ=2.5", "blearner[fixed_2p5]"),

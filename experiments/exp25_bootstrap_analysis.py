@@ -48,10 +48,6 @@ from experiments.exp25_hit_ratio_analysis import (
 )
 from experiments.interval_stats import percentile_interval
 
-
-# Kept under its old private name for external importers.
-_percentile_interval = percentile_interval
-
 NATURALNESS_MODEL = "naturalness"
 DEFAULT_BOOTSTRAP_REPLICATES = 2000
 DEFAULT_CONFIDENCE_LEVEL = 0.95

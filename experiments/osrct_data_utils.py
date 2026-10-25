@@ -9,13 +9,16 @@ from typing import Any, Iterable
 import pandas as pd
 
 from causal_grounding.loaders import RawDataset, load_sites
-from experiments.manylabs_cohort import (
+from causal_grounding.loaders.cohort import (
     OBSERVED_GENDER_COHORT_RULE,
     restrict_to_observed_gender,
 )
-from experiments.utils import (
+from causal_grounding.loaders.covariates import (
     DEFAULT_AGE_BINARY_THRESHOLD,
     DEFAULT_POLIDEO_BINARY_THRESHOLD,
+)
+from causal_grounding.paper_grids import EPSILON_GRID, TAU_GRID
+from experiments.utils import (
     add_binary_covariates,
     add_naturalness_columns,
     expand_target_sites,
@@ -56,17 +59,8 @@ class OSRCTConfig:
         PROJECT_ROOT / "ManyLabs1" / "pre-process" / "Manylabs1_data.pkl"
     )
 
-    epsilons: tuple[float, ...] = (
-        0.01,
-        0.025,
-        0.05,
-        0.075,
-        0.10,
-        0.15,
-        0.20,
-        0.50,
-    )
-    taus: tuple[float, ...] = (0.01, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30)
+    epsilons: tuple[float, ...] = EPSILON_GRID
+    taus: tuple[float, ...] = TAU_GRID
     covariates: tuple[str, ...] = (
         "resp_age_bin",
         "resp_gender_bin",

@@ -62,6 +62,7 @@ from causal_grounding.naturalness_grounder import (
     validate_gp_target_scale,
     validate_gp_training_target,
 )
+from causal_grounding.paper_grids import MIN_RELEVANCE_TAU, PAPER_BETAS, floor_taus
 from causal_grounding.train_target_split import create_train_target_split
 from experiments.benchmarks import atomic_write_parquet, format_beta
 from experiments.exp16_osrct_calibrated_policy import Exp16Config
@@ -72,7 +73,6 @@ from experiments.exp25_osrct_mc_baseline_comparison import (
 from experiments.exp32_manylabs_noise_candidates import (
     _parquet_safe,
     exp25_target_index,
-    floor_taus,
     load_exp25_store_config,
 )
 from experiments.osrct_data_utils import load_prepared_data
@@ -88,8 +88,7 @@ from experiments.utils import (
 
 
 #: Tau floors: 0.01 keeps Exp25's grid (the replay check); 0.05 drops tau = 0.01; 0.075 also drops 0.05.
-DEFAULT_FLOORS = (0.01, 0.05, 0.075)
-PAPER_BETAS = (0.5, 1.0, 1.5, 2.0)
+DEFAULT_FLOORS = (0.01, 0.05, MIN_RELEVANCE_TAU)
 #: Stage-2 columns the Stage-3 GP and the tolerance lookup read.
 STAGE2_COLUMNS = (
     "site_id", "covariate", "covariate_index", "epsilon", "tau", "i_deviation",
@@ -1227,7 +1226,7 @@ def family_mismatch_table_latex(strata: pd.DataFrame, *, grounding: str = "per_s
 
 def summarize_arms(
     conditions: Sequence[Condition], arms_root: Path, *, published_root: Path, identities_root: Path,
-    floor: float = 0.075,
+    floor: float = MIN_RELEVANCE_TAU,
 ) -> dict[str, pd.DataFrame]:
     """Score the four mechanism arms of Exp25 and write their tables.
 
