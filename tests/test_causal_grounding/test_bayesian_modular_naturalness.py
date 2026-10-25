@@ -379,11 +379,13 @@ def test_jax_caches_are_cleared_once_per_interval(monkeypatch) -> None:
 
     clears: list[int] = []
     fake_jax = SimpleNamespace(clear_caches=lambda: clears.append(1))
-    monkeypatch.setattr(module, "_fits_since_jax_cache_clear", 0)
+    monkeypatch.setattr(module, "_JAX_CACHE_CLEARER", module._PeriodicJaxCacheClearer())
     for _ in range(2 * module.JAX_CACHE_CLEAR_INTERVAL + 3):
         module._clear_jax_caches_periodically(fake_jax)
     assert len(clears) == 2
-    assert module._fits_since_jax_cache_clear == 3
+    assert module._JAX_CACHE_CLEARER.fits_since_clear == 3
+    module._JAX_CACHE_CLEARER.reset()
+    assert module._JAX_CACHE_CLEARER.fits_since_clear == 0
 
 
 def test_retry_uses_its_own_retained_draw_count(monkeypatch) -> None:

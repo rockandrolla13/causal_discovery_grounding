@@ -19,28 +19,20 @@ from causal_grounding.loaders.covariates import (  # noqa: F401  threshold re-ex
     derive_polideo_bin,
 )
 from causal_grounding.naturalness_grounder import NaturalnessGrounder, NaturalnessGrid
+from causal_grounding.probability_backends import probability_backend_names
 from causal_grounding.train_target_split import (
     get_available_sites,
 )
 
 
-SUPPORTED_STAGE1_BACKENDS = (
-    "xgboost",
-    "hierarchical_dirichlet",
-    "tabicl_v2",
-)
-HIERARCHICAL_DIRICHLET_LP_BACKENDS = (
-    "hierarchical_dirichlet",
-    "hierarchical_dirichlet_draws",
-    "hierarchical_dirichlet_posterior",
-    "dirichlet_posterior",
+# Derived from causal_grounding.probability_backends, the single backend registry.
+SUPPORTED_STAGE1_BACKENDS = probability_backend_names(stage1=True, model_based=True)
+HIERARCHICAL_DIRICHLET_LP_BACKENDS = probability_backend_names(
+    target_lp=True, fit_backend="hierarchical_dirichlet"
 )
 SUPPORTED_LP_PROBABILITY_BACKENDS = (
     "stage1",
-    "empirical",
-    "xgboost",
-    *HIERARCHICAL_DIRICHLET_LP_BACKENDS,
-    "tabicl_v2",
+    *probability_backend_names(target_lp=True),
 )
 SUPPORTED_TARGET_TRIGGER_PROBABILITY_BACKENDS = (
     "lp",
