@@ -35,12 +35,11 @@ from causal_grounding.lp_solver_learned_naturalness import (
 from causal_grounding.train_target_split import create_train_target_split
 from experiments.osrct_target_pipeline import Exp16Config, run_one_target
 from experiments.run_config import build_lp_probability_model_kwargs
+from tests.conftest import assert_frame_matches_golden
 
 GOLDEN_DIR = Path(__file__).parent / "golden" / "exp16_run_one_target"
 PMF_SNAPSHOT = GOLDEN_DIR / "hierarchical_dirichlet_draws_target_pmfs.csv"
 FLOAT_FORMAT = "%.10g"
-RTOL = 1e-6
-ATOL = 1e-9
 TARGET_SITE = "pi"
 TARGET_INDEX = 7
 DROPPED_COLUMNS = ("z_value", "z_value_str", "reason", "warnings")
@@ -207,10 +206,7 @@ def test_run_one_target_matches_golden_snapshot(scenario, golden_round_trip):
     for frame_name in expected_names:
         expected = pd.read_csv(directory / f"{frame_name}.csv")
         try:
-            pd.testing.assert_frame_equal(
-                golden_round_trip(frames[frame_name]), expected,
-                check_exact=False, rtol=RTOL, atol=ATOL,
-            )
+            assert_frame_matches_golden(golden_round_trip(frames[frame_name]), expected)
         except AssertionError as error:
             raise AssertionError(f"{scenario}/{frame_name}: {error}") from error
 
@@ -218,7 +214,4 @@ def test_run_one_target_matches_golden_snapshot(scenario, golden_round_trip):
 def test_target_pmf_draws_match_golden_snapshot(golden_round_trip):
     """Per-draw hierarchical-Dirichlet target probabilities equal the snapshot."""
     expected = pd.read_csv(PMF_SNAPSHOT)
-    pd.testing.assert_frame_equal(
-        golden_round_trip(target_pmf_draws()), expected,
-        check_exact=False, rtol=RTOL, atol=ATOL,
-    )
+    assert_frame_matches_golden(golden_round_trip(target_pmf_draws()), expected)

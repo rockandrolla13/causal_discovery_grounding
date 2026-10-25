@@ -17,10 +17,9 @@ from pathlib import Path
 import pandas as pd
 
 from examples.toy_naturalness import naturalness_bounds, simulate_toy_data
+from tests.conftest import assert_frame_matches_golden
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
-RTOL = 1e-6
-ATOL = 1e-9
 
 
 def test_toy_example_matches_golden_snapshot(golden_round_trip):
@@ -37,6 +36,4 @@ def test_toy_example_matches_golden_snapshot(golden_round_trip):
         (conditions, "toy_conditions_seed0_draws100.csv"),
     ]:
         expected = pd.read_csv(GOLDEN_DIR / name)
-        pd.testing.assert_frame_equal(
-            golden_round_trip(frame), expected, check_exact=False, rtol=RTOL, atol=ATOL
-        )
+        assert_frame_matches_golden(golden_round_trip(frame), expected)

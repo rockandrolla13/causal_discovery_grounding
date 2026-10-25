@@ -16,11 +16,10 @@ from causal_grounding import Naturalness, api
 from causal_grounding.api import _as_site_mapping
 from causal_grounding.loaders.contract import SiteBundle, SiteTable
 from examples.toy_naturalness import simulate_toy_data
+from tests.conftest import assert_frame_matches_golden
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 # Same snapshot format and tolerances as tests/test_golden_toy_example.py.
-RTOL = 1e-6
-ATOL = 1e-9
 COVARIATES = ["Z1", "Z2"]
 N_DRAWS = 100
 
@@ -39,9 +38,7 @@ def _assert_matches_golden(bounds, conditions, tmp_path):
         (conditions, "toy_conditions_seed0_draws100.csv"),
     ]:
         expected = pd.read_csv(GOLDEN_DIR / name)
-        pd.testing.assert_frame_equal(
-            _round_trip(frame, tmp_path), expected, check_exact=False, rtol=RTOL, atol=ATOL
-        )
+        assert_frame_matches_golden(_round_trip(frame, tmp_path), expected)
 
 
 def _bundle(sources, treatment="X", covariates=tuple(COVARIATES), drop=()):

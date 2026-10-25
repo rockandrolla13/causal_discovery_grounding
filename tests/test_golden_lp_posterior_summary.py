@@ -15,11 +15,10 @@ import numpy as np
 import pandas as pd
 
 from experiments.lp_summaries import summarize_lp_posterior_bounds
+from tests.conftest import assert_frame_matches_golden
 
 SNAPSHOT = Path(__file__).parent / "golden" / "lp_posterior_summary_seed0.csv"
 FLOAT_FORMAT = "%.10g"
-RTOL = 1e-6
-ATOL = 1e-9
 COVARIATES = ("resp_age_bin", "resp_gender_bin")
 N_DRAWS = 40
 
@@ -64,6 +63,4 @@ def test_summarize_lp_posterior_bounds_matches_golden_snapshot(golden_round_trip
     """Endpoint quantiles, envelopes and optimal-draw rates equal the snapshot."""
     summary = summarize_lp_posterior_bounds(synthetic_draw_table(), COVARIATES)
     expected = pd.read_csv(SNAPSHOT)
-    pd.testing.assert_frame_equal(
-        golden_round_trip(summary), expected, check_exact=False, rtol=RTOL, atol=ATOL
-    )
+    assert_frame_matches_golden(golden_round_trip(summary), expected)
