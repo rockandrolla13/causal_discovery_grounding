@@ -68,6 +68,7 @@ from causal_grounding import (  # noqa: E402
     posterior_target_bounds,
 )
 from causal_grounding.balke_pearl import balke_pearl_interval  # noqa: E402
+from causal_grounding.manski import manski_interval  # noqa: E402
 
 COVARIATES = ["Z1", "Z2"]
 #: Naturalness thresholds ``epsilon`` and the relevance grid ``tau >= 0.075``
@@ -232,10 +233,7 @@ def reference_bounds(target: pd.DataFrame) -> pd.DataFrame:
     """
     rows = []
     for (z1, z2), cell in target.groupby(COVARIATES):
-        p_x1 = cell["X"].mean()
-        mean_y1 = cell.loc[cell["X"].eq(1), "Y"].mean()
-        mean_y0 = cell.loc[cell["X"].eq(0), "Y"].mean()
-        manski_lower = mean_y1 * p_x1 - mean_y0 * (1 - p_x1) - p_x1
+        manski_lower, manski_upper = manski_interval(cell, treatment="X", outcome="Y")
         stratum = target[target["Z2"].eq(z2)]
         # joint[z1, y, x] = P(Y=y, X=x | Z1=z1, Z2=z2)
         joint = np.zeros((2, 2, 2))
@@ -249,7 +247,7 @@ def reference_bounds(target: pd.DataFrame) -> pd.DataFrame:
             "Z1": z1,
             "Z2": z2,
             "manski_lower": manski_lower,
-            "manski_upper": manski_lower + 1.0,
+            "manski_upper": manski_upper,
             "balke_pearl_lower": balke_pearl.lower,
             "balke_pearl_upper": balke_pearl.upper,
         })

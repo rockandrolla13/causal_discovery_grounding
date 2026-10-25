@@ -42,6 +42,7 @@ from .lp_solver_learned_naturalness import (
     solve_target_weighted_cate_bounds_from_observed_binary_quantities,
 )
 from .naturalness_statistics import as_tuple, safe_sorted
+from .seeding import sha256_seed
 
 
 LOGGER = logging.getLogger(__name__)
@@ -74,11 +75,8 @@ _SURFACE_SPECS = (
 )
 
 
-def _stable_seed(*parts: Any) -> int:
-    """Derive a reproducible 32-bit seed from arbitrary identifiers."""
-
-    payload = "|".join(map(str, parts)).encode("utf-8")
-    return int.from_bytes(hashlib.sha256(payload).digest()[:4], "little")
+#: The SHA-256 seed scheme of this pipeline; see :mod:`causal_grounding.seeding`.
+_stable_seed = sha256_seed
 
 
 def _stable_sample_id(*parts: Any) -> str:
