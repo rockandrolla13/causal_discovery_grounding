@@ -498,7 +498,6 @@ def _write(frame, path):
 def test_summarize_arms_scores_every_method_with_manski_fallback(tmp_path):
     """Synthetic leaves: Manski fills a stratum without an optimal draw, transport is scored at shift 0."""
     strata = pd.DataFrame({"resp_age_bin": [0, 1], "resp_gender_bin": [0, 0], "resp_polideo_bin": [0, 0]})
-    keys = list(strata.columns)
     store = tmp_path / "20260917" / "tabicl_v2" / "tabicl_v2" / "tabicl_v2"
     condition = reg.Condition(str(store), 0, "s", "age", 1.0)
     leaf = Path("floor=0.075") / condition.label

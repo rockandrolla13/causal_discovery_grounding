@@ -2586,10 +2586,10 @@ def adopt_pmfs(
 
     output_dir, source_root = Path(output_dir), Path(source_root)
     target, source = read_pmf_identity(output_dir), read_pmf_identity(source_root)
-    for field in ("module_a", "module_a_scheme", "n_source_draws", "n_target_draws", "target_site", "covariates",
-                  "dependencies"):
-        if target.get(field) != source.get(field):
-            raise ValueError(f"The PMF roots differ in {field!r}; their draws are not interchangeable")
+    for key in ("module_a", "module_a_scheme", "n_source_draws", "n_target_draws", "target_site", "covariates",
+                "dependencies"):
+        if target.get(key) != source.get(key):
+            raise ValueError(f"The PMF roots differ in {key!r}; their draws are not interchangeable")
     fingerprints = _recorded_source_fingerprints(output_dir)
     source_fingerprints = _recorded_source_fingerprints(source_root)
     changed = [path for path in MODULE_A_SOURCES

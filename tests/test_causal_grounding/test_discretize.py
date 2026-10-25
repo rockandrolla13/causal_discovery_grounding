@@ -2,7 +2,6 @@
 Test discretize.py module - covariate discretization functions.
 """
 
-import pytest
 import numpy as np
 import pandas as pd
 from causal_grounding import (

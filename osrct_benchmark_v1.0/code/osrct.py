@@ -210,7 +210,7 @@ class OSRCTSampler:
             n_sampled = len(observational_sample)
             pct_sampled = 100 * n_sampled / n_original
 
-            print(f"OSRCT Sampling Results:")
+            print("OSRCT Sampling Results:")
             print(f"  Original RCT size: {n_original:,}")
             print(f"  Sampled size: {n_sampled:,} ({pct_sampled:.1f}%)")
             print(f"  Selection prob range: [{selection_probs.min():.3f}, {selection_probs.max():.3f}]")

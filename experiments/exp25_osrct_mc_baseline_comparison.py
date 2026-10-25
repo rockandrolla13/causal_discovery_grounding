@@ -1387,7 +1387,7 @@ def _aggregate_gamma_calibrations(
         return pd.DataFrame()
     paths = sorted(
         (output_dir / "replications").glob(
-            f"replication=*/" + filename
+            "replication=*/" + filename
         )
     )
     if not paths:

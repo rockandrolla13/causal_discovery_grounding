@@ -49,7 +49,6 @@ from experiments.method_styles import (
     PAPER_RC,
 )
 from experiments.naturalness_comparison import (
-    MANSKI_CAPPED_METHODS,
     METHOD_LABELS as RUNNER_METHOD_LABELS,
     condition_covariates,
     rescore_with_manski_cap,

@@ -37,20 +37,18 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Tuple, Any
 
 import numpy as np
 import pandas as pd
 
 # Import OSRCT components
-from osrct import OSRCTSampler, evaluate_osrct_sample, load_manylabs1_data
+from osrct import OSRCTSampler, evaluate_osrct_sample
 from experimental_grid import (
     EXPERIMENTAL_GRID,
     STUDIES,
     BETA_VALUES,
-    COVARIATE_PATTERNS,
-    get_total_configurations,
-    get_grid_summary
+    COVARIATE_PATTERNS
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -867,7 +865,7 @@ Examples:
         sys.exit(1)
 
     # Run generation
-    results = generate_full_grid(
+    generate_full_grid(
         data_path=args.data_path,
         output_dir=args.output_dir,
         studies=args.studies,

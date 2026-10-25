@@ -82,10 +82,7 @@ from experiments.benchmarks import (
     BLearnerFitResult,
     BLearnerFitTask,
     BenchmarkFitConfig,
-    _PaperPWLearner,
-    _VALIDATED_BLEARNER_REPOSITORIES,
     blearner_gammas as _shared_blearner_gammas,
-    cb_pseudo_outcome,
     make_blearner as _shared_make_blearner,
     parse_gamma as _shared_parse_gamma,
     parse_gamma_search_grid as _shared_parse_gamma_search_grid,
@@ -93,11 +90,9 @@ from experiments.benchmarks import (
     run_blearner_fit_tasks as _shared_run_blearner_fit_tasks,
     run_fit_tasks as _shared_run_fit_tasks,
     validate_blearner_repository as _shared_validate_blearner_repository,
-    wb_pseudo_outcome,
 )
 from experiments.naturalness_plotting import (
     _format_stratum_tick,
-    _posterior_mean_plot_data,
     _prepare_study_panel_plot_data,
     _set_horizontal_study_panel_axis_labels,
     _set_study_panel_axis_labels,

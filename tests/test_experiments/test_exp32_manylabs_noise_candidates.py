@@ -5,7 +5,6 @@ backend on synthetic data. It checks wiring only; no number it produces is a
 result.
 """
 
-from pathlib import Path
 
 import numpy as np
 import pandas as pd

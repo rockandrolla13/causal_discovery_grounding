@@ -7,7 +7,6 @@ The LP solver requires discrete covariate spaces to enumerate all possible
 """
 
 import pandas as pd
-import numpy as np
 from typing import List, Optional
 
 

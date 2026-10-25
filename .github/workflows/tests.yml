@@ -25,11 +25,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      # Advisory until the existing findings are fixed.
-      # Flip continue-on-error to false once `ruff check .` is clean.
+      # Blocking: `ruff check .` is clean, so any new finding fails the job.
       # Pinned to the version used locally, so CI and local runs report the same findings.
       - name: ruff check
-        continue-on-error: true
         run: |
           python -m pip install ruff==0.15.6
           ruff check --output-format=github .

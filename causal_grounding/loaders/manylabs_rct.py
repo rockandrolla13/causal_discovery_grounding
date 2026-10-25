@@ -18,7 +18,7 @@ at the same offsets, because the observational sample is a biased subsample.
 Join on ``id``.
 """
 
-from typing import Tuple, Dict, Any, FrozenSet
+from typing import Tuple, Dict, Any
 from pathlib import Path
 import logging
 

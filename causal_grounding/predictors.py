@@ -18,9 +18,9 @@ import numpy as np
 import pandas as pd
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any, Iterator, Optional, Tuple, Union, TYPE_CHECKING
+from typing import List, Dict, Any, Iterator, Optional, Tuple, Union
 import warnings
 
 # XGBoost is optional
