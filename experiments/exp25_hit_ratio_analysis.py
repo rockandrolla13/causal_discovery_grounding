@@ -30,6 +30,8 @@ from typing import Callable, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
+from experiments.interval_stats import percentile_interval
+
 INTERVALS_FILENAME = "mc_intervals.parquet"
 EXP25_KEY_COLUMNS = (
     "replication",
@@ -803,9 +805,6 @@ def _frontier_bootstrap_intervals(
         ValueError: If ``confidence_level`` is outside ``(0, 1)``.
     """
 
-    # Lazy import: the bootstrap module imports this one at load time.
-    from experiments.exp25_bootstrap_analysis import _percentile_interval
-
     if not 0.0 < confidence_level < 1.0:
         raise ValueError("confidence_level must lie strictly between zero and one")
     rng = np.random.default_rng(seed)
@@ -826,8 +825,8 @@ def _frontier_bootstrap_intervals(
             with np.errstate(invalid="ignore", divide="ignore"):
                 width = clusters["width"].to_numpy(dtype=float)[sampled].sum(axis=1) / counts
                 hits = clusters["hits"].to_numpy(dtype=float)[sampled].sum(axis=1) / counts
-            width_lower, width_upper = _percentile_interval(width, confidence_level)
-            hit_lower, hit_upper = _percentile_interval(hits, confidence_level)
+            width_lower, width_upper = percentile_interval(width, confidence_level)
+            hit_lower, hit_upper = percentile_interval(hits, confidence_level)
             intervals[(*values, str(model))] = {
                 "mean_width_ci_lower": width_lower,
                 "mean_width_ci_upper": width_upper,
