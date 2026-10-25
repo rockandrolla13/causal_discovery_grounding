@@ -22,7 +22,12 @@ from dataclasses import replace
 
 from scipy.special import expit
 
-from experiments.benchmarks import BLEARNER_GAMMA_GRID, WIDTH_MATCHED_GAMMA
+from experiments.benchmarks import (
+    BLEARNER_GAMMA_GRID,
+    WIDTH_MATCHED_GAMMA,
+    cb_pseudo_outcome,
+    wb_pseudo_outcome,
+)
 from experiments.exp18_cb_meta_learner_comparison import (
     Exp18Config,
     FitResult,
@@ -32,9 +37,7 @@ from experiments.exp18_cb_meta_learner_comparison import (
     _finalize_binary_cate_intersection,
     _leaf_output_dir,
     _ordered_pairs,
-    cb_pseudo_outcome,
     parse_args,
-    wb_pseudo_outcome,
 )
 
 
