@@ -212,7 +212,7 @@ def test_frozen_protocol_matches_the_plan() -> None:
 
     _require_exp25_stack()
     from experiments.exp25_osrct_mc_baseline_comparison import EXP25_STRATUM_COLUMNS
-    from experiments.exp16_osrct_calibrated_policy import Exp16Config
+    from experiments.osrct_target_pipeline import Exp16Config
 
     assert exp31.SEEDS == tuple(range(62, 82))
     assert not set(exp31.SEEDS) & set(range(202608, 202628)) and not set(exp31.SEEDS) & set(range(42, 62))

@@ -20,32 +20,38 @@ coverage.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+from itertools import repeat
 import logging
+import multiprocessing as mp
+import os
 from pathlib import Path
 import sys
 import time
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
 
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from causal_grounding import balke_pearl
 from causal_grounding import naturalness_statistics as stats
 from causal_grounding.lp_solver_learned_naturalness import (
     estimate_target_observed_binary_quantities,
 )
+from causal_grounding.manski import manski_bounds
+from causal_grounding.seeding import crc32_seed
 from causal_grounding.train_target_split import create_train_target_split
-from experiments import exp16_osrct_calibrated_policy as exp16
+from experiments import osrct_target_pipeline as target_pipeline
 from experiments import naturalness_comparison_data as data
-from experiments.utils import (
+from experiments.run_config import (
     build_configured_naturalness_grounder,
     build_lp_probability_model_kwargs,
-    json_default,
-    write_run_manifest,
 )
+from experiments.run_manifest import json_default, write_run_manifest
 
 
 LOGGER = logging.getLogger(__name__)
@@ -60,7 +66,10 @@ class ComparisonBaseConfig:
     ``max_fit_rows`` caps each site/regime's fitting rows without inspecting treatment or outcome
     (zero disables the cap), so every arm fits the same target subset; evaluation uses all target
     idle rows. Twins has a single release, so it is loaded once whatever ``dgp_seeds`` holds;
-    repetition comes from ``seeds``.
+    repetition comes from ``seeds``. ``n_jobs`` sizes the fit pools inside one condition.
+    ``grid_n_jobs`` runs that many (dataset, draw, seed, beta) grid jobs in parallel spawned
+    processes. The default of one keeps the serial loop, and any value gives the same results
+    in the same order.
     """
 
     data_root: str = "data"
@@ -73,12 +82,13 @@ class ComparisonBaseConfig:
     twins_bias_covariate: str = "birmon"
     stage1_backend: str = "tabicl_v2"
     tabicl_device: str = "auto"
-    epsilons: tuple[float, ...] = exp16.Exp16Config().epsilons
-    taus: tuple[float, ...] = exp16.Exp16Config().taus
+    epsilons: tuple[float, ...] = target_pipeline.Exp16Config().epsilons
+    taus: tuple[float, ...] = target_pipeline.Exp16Config().taus
     min_cell_count: int = 20
     max_fit_rows: int = 5000
     lp_posterior_samples: int = 250
     n_jobs: int = 4
+    grid_n_jobs: int = 1
     blearner_repository: str = "/opt/BLearner" if Path("/opt/BLearner").exists() else "/tmp/BLearner"
     output_dir: str = "results/naturalness_method_comparison"
     resume: bool = False
@@ -96,7 +106,8 @@ class ComparisonBaseConfig:
             raise ValueError("betas must be finite, nonnegative, and below 700")
         if self.stage1_backend not in ("tabicl_v2", "hierarchical_dirichlet", "xgboost"):
             raise ValueError("Unsupported Stage-1 backend")
-        if self.min_cell_count < 1 or self.max_fit_rows < 0 or self.lp_posterior_samples < 1 or self.n_jobs < 1:
+        if (self.min_cell_count < 1 or self.max_fit_rows < 0 or self.lp_posterior_samples < 1
+                or self.n_jobs < 1 or self.grid_n_jobs < 1):
             raise ValueError("Support, draws, and workers must be positive; fitting cap nonnegative")
         if not self.twins_covariates or len(set(self.twins_covariates)) != len(self.twins_covariates):
             raise ValueError("twins_covariates must be nonempty and unique")
@@ -172,13 +183,13 @@ def prepare_condition(prepared: Mapping[str, Any], dataset: str, beta: float, se
         raise ValueError(f"{dataset} declares a latent assignment mechanism, which this comparison does not support")
     partitions, treatment, outcome = data.build_partitions(
         prepared["sites"], prepared["treatment"], prepared["covariates"], bias, beta, .4,
-        np.random.default_rng(data.stable_seed(dataset, bias, beta, seed)),
+        np.random.default_rng(crc32_seed(dataset, bias, beta, seed)),
         potential=prepared["potential"],
         clusters=prepared.get("clusters"), trial_probability=prepared.get("trial_probability"))
     frame = pd.DataFrame(prepared["covariates"][:, [names.index(c) for c in covariates]], columns=covariates)
     frame["id"] = np.arange(len(frame))
     frame["site"] = prepared["sites"].astype(str)
-    frame["iv"], frame["dv_binary"] = treatment, outcome
+    frame[TREATMENT_COLUMN], frame[OUTCOME_COLUMN] = treatment, outcome
     fitting, evaluation, row_audits = [], {}, []
     for partition in partitions:
         site = str(partition.site)
@@ -193,42 +204,16 @@ def prepare_condition(prepared: Mapping[str, Any], dataset: str, beta: float, se
         for regime, rows in (("on", partition.rct), ("idle", idle_rows)):
             fit_rows = rows
             if config.max_fit_rows and len(rows) > config.max_fit_rows:
-                fit_rows = np.sort(np.random.default_rng(data.stable_seed("stage2-fit-cap", seed, site, regime)).choice(
+                fit_rows = np.sort(np.random.default_rng(crc32_seed("stage2-fit-cap", seed, site, regime)).choice(
                     rows, config.max_fit_rows, replace=False))
             fitting.append(frame.iloc[fit_rows].assign(F=regime))
             row_audits.append(dict(site=site, regime=regime, population_rows=len(rows), fitting_rows=len(fit_rows),
                                    fitting_ids_sha256=hashlib.sha256(np.asarray(fit_rows, dtype=np.int64).tobytes()).hexdigest()))
     fitted = pd.concat(fitting, ignore_index=True)
-    assert set(fitted.columns) == set(covariates) | {"id", "site", "iv", "dv_binary", "F"}
+    assert set(fitted.columns) == set(covariates) | {"id", "site", TREATMENT_COLUMN, OUTCOME_COLUMN, "F"}
     assert not set(fitted.loc[fitted.F == "on", "id"]) & set(fitted.loc[fitted.F == "idle", "id"])
     return dict(on=fitted[fitted.F == "on"].copy(), idle=fitted[fitted.F == "idle"].copy(),
                 evaluation=evaluation, covariates=covariates, row_audit=pd.DataFrame(row_audits))
-
-def manski_bounds(target_idle: pd.DataFrame, strata: pd.DataFrame,
-                  covariates: Sequence[str], min_count: int) -> pd.DataFrame:
-    """Compute unsmoothed binary Manski bounds and a shared fitting-support mask.
-
-    ``target_idle`` is the common learner subset; ``strata`` enumerates all
-    evaluation cells. Missing fitting cells receive [-1,1]. A missing treatment
-    arm is kept as unobserved mass rather than fabricated or dropped. Both arm
-    counts must meet ``min_count`` for the shared support mask.
-    """
-    records = []
-    for z in strata[list(covariates)].itertuples(index=False, name=None):
-        mask = np.logical_and.reduce([target_idle[c].to_numpy() == v for c, v in zip(covariates, z)])
-        cell = target_idle.loc[mask]
-        n = len(cell)
-        record = dict(zip(covariates, z))
-        n0, n1 = int((cell.iv == 0).sum()), int((cell.iv == 1).sum())
-        if n:
-            a0 = float(cell.loc[cell.iv == 0, "dv_binary"].sum()) / n
-            a1 = float(cell.loc[cell.iv == 1, "dv_binary"].sum()) / n
-            lower, upper = a1 - a0 - n1 / n, a1 - a0 + n0 / n
-        else:
-            lower, upper = -1., 1.
-        records.append(dict(**record, lower=lower, upper=upper, n_fit=n, n_fit_arm0=n0, n_fit_arm1=n1,
-                            common_supported=n0 >= min_count and n1 >= min_count))
-    return pd.DataFrame(records)
 
 def _complete_bounds(raw: pd.DataFrame, baseline: pd.DataFrame, covariates: Sequence[str],
                      failure: str = "missing") -> pd.DataFrame:
@@ -329,9 +314,9 @@ def posterior_bounds(samples: pd.DataFrame, baseline: pd.DataFrame,
     primary["procedure"] = "all_requested_draw_endpoint_mean_with_manski_fallback"
     return primary, draws
 
-def naturalness_config(config: ComparisonBaseConfig, covariates: Sequence[str], seed: int) -> exp16.Exp16Config:
+def naturalness_config(config: ComparisonBaseConfig, covariates: Sequence[str], seed: int) -> target_pipeline.Exp16Config:
     """Adapt the comparison settings to the Exp16 inference APIs."""
-    return exp16.Exp16Config(
+    return target_pipeline.Exp16Config(
         covariates=tuple(covariates), naturalness_covariates=tuple(covariates),
         lp_probability_covariates=tuple(covariates), seed=seed,
         epsilons=config.epsilons, taus=config.taus, min_cell_count=config.min_cell_count,
@@ -368,24 +353,24 @@ def fit_naturalness(training: Mapping[str, pd.DataFrame], target_idle: pd.DataFr
         return model
 
     grounder.stage1_backend_factory_ = logged_site_fit
-    grounder.fit(dict(training), treatment="iv", outcome="dv_binary", regime_col="F", fit_gp=False)
+    grounder.fit(dict(training), treatment=TREATMENT_COLUMN, outcome=OUTCOME_COLUMN, regime_col="F", fit_gp=False)
     atomic_write_parquet(grounder.observations_, output / "source_observations.parquet")
     LOGGER.info("Naturalness source GP fit start")
     grounder.fit_stage3_gp()
     LOGGER.info("Naturalness target probability fit start rows=%s", len(target_idle))
     observed = estimate_target_observed_binary_quantities(
-        target_idle, treatment="iv", outcome="dv_binary", covariates=covariates,
+        target_idle, treatment=TREATMENT_COLUMN, outcome=OUTCOME_COLUMN, covariates=covariates,
         model_covariates=covariates, min_count=config.min_cell_count,
         probability_backend=config.stage1_backend,
         probability_model_kwargs=build_lp_probability_model_kwargs(inference, config.stage1_backend))
-    candidates = exp16._policy_candidates(grounder, target_idle, inference, trigger_quantities=observed)
-    choices = exp16.select_policy_choices(candidates, len(covariates), mode="all_triggered")
+    candidates = target_pipeline.build_policy_candidates(grounder, target_idle, inference, trigger_quantities=observed)
+    choices = target_pipeline.select_policy_choices(candidates, len(covariates), mode="all_triggered")
     atomic_write_parquet(candidates, output / "target_candidates.parquet")
     atomic_write_parquet(choices, output / "selected_choices.parquet")
     LOGGER.info("Naturalness full LP choices=%s posterior draws=%s", len(choices), config.lp_posterior_samples)
-    direct = exp16.solve_choices_lp(target_idle, choices, inference, observed_quantities=observed)
+    direct = target_pipeline.solve_choices_lp(target_idle, choices, inference, observed_quantities=observed)
     atomic_write_parquet(_complete_bounds(direct, baseline, covariates), output / "naturalness_direct.parquet")
-    tolerances, samples, conditional = exp16.solve_choices_lp_posterior_samples(
+    tolerances, samples, conditional = target_pipeline.solve_choices_lp_posterior_samples(
         target_idle, choices, grounder, inference, random_seed=seed, observed_quantities=observed)
     atomic_write_parquet(tolerances, output / "tolerance_draws.parquet")
     atomic_write_parquet(samples, output / "lp_draws_raw.parquet")
@@ -631,8 +616,8 @@ def balke_pearl_bounds(target_idle: pd.DataFrame, strata: pd.DataFrame,
     """
     names = list(covariates)
     values = {c: target_idle[c].to_numpy() for c in names}
-    treat = target_idle["iv"].to_numpy().astype(int)
-    outcome = target_idle["dv_binary"].to_numpy().astype(int)
+    treat = target_idle[TREATMENT_COLUMN].to_numpy().astype(int)
+    outcome = target_idle[OUTCOME_COLUMN].to_numpy().astype(int)
 
     relevant = _relevant_candidates(target_idle, names, min_count, tau)
     per_stratum: dict[tuple[int, tuple], balke_pearl.BalkePearlInterval] = {}
@@ -714,7 +699,7 @@ def _relevant_candidates(target_idle: pd.DataFrame, names: Sequence[str],
     empirical cell frequencies rather than a fitted model.
     """
     values = {c: target_idle[c].to_numpy() for c in names}
-    treat = target_idle["iv"].to_numpy().astype(int)
+    treat = target_idle[TREATMENT_COLUMN].to_numpy().astype(int)
     kept = []
     for j, name in enumerate(names):
         rest = [c for c in names if c != name]
@@ -960,12 +945,21 @@ def _fingerprint(config: ComparisonConfig) -> tuple[str, dict[str, Any]]:
     # Deferred: experiments.benchmarks imports catenets and torch at module level.
     from experiments.benchmarks import BLEARNER_COMMIT
     settings = asdict(config)
-    for key in ("resume", "output_dir", "cluster_manifest_path"):
+    # grid_n_jobs only spreads the grid over processes; the results do not depend on it.
+    for key in ("resume", "output_dir", "cluster_manifest_path", "grid_n_jobs"):
         settings.pop(key, None)
     repo = Path(__file__).resolve().parents[1]
     sources = [Path(__file__), repo / "experiments/naturalness_comparison_data.py",
-               repo / "experiments/benchmarks.py", repo / "experiments/utils.py",
+               repo / "experiments/benchmarks.py",
+               repo / "experiments/osrct_files.py",
+               repo / "experiments/covariate_preparation.py",
+               repo / "experiments/run_config.py",
+               repo / "experiments/conformal_bounds.py",
+               repo / "experiments/lp_summaries.py",
+               repo / "experiments/run_manifest.py",
+               repo / "experiments/latex_tables.py",
                repo / "experiments/exp16_osrct_calibrated_policy.py",
+               repo / "experiments/osrct_target_pipeline.py",
                repo / "experiments/exp18_cb_meta_learner_comparison.py"]
     sources.extend(sorted((repo / "causal_grounding").rglob("*.py")))
     payload = dict(config=settings, blearner_commit=BLEARNER_COMMIT,
@@ -973,6 +967,173 @@ def _fingerprint(config: ComparisonConfig) -> tuple[str, dict[str, Any]]:
                    sources={str(p.relative_to(repo)): _sha256(p) for p in sources if p.exists()})
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(), payload
 
+
+
+@dataclass(frozen=True)
+class _GridJob:
+    """One (dataset, DGP draw, seed, beta) cell of the comparison grid.
+
+    Attributes:
+        prepared: Output of :func:`experiments.naturalness_comparison_data.prepare_dataset`.
+        dataset: Dataset name.
+        draw: DGP draw, ``None`` for Twins.
+        seed: Condition seed.
+        beta: Assignment strength.
+    """
+
+    prepared: Mapping[str, Any]
+    dataset: str
+    draw: int | None
+    seed: int
+    beta: float
+
+
+def _grid_jobs(config: ComparisonConfig) -> Iterator[_GridJob]:
+    """Yield the grid's (dataset, draw, seed, beta) jobs in serial order.
+
+    Each dataset draw is prepared once, just before its first job, as the serial loop did.
+
+    Args:
+        config: Experiment settings.
+
+    Yields:
+        One job per (dataset, draw, seed, beta), datasets outermost and betas innermost.
+    """
+    for dataset in config.datasets:
+        draws = (None,) if dataset == "twins_reduced" else config.dgp_seeds
+        for draw in draws:
+            root = dataset_root(config, dataset, draw)
+            prepared = data.prepare_dataset(
+                data.BUILTIN_SPECS[dataset], root,
+                n_sites=6, min_site_rows=150)
+            for seed in config.seeds:
+                for beta in config.betas:
+                    yield _GridJob(prepared, dataset, draw, seed, beta)
+
+
+def _run_grid_job(job: _GridJob, config: ComparisonConfig, output: Path
+                  ) -> Iterator[tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
+    """Fit, score and write every target condition of one grid job.
+
+    Each target writes its own leaf, so a resumed run picks up completed targets from their
+    ``completion.json``. Every random stream comes from ``crc32_seed`` on the condition's
+    identifiers, so the result does not depend on which process runs the job.
+
+    Args:
+        job: The grid cell.
+        config: Experiment settings.
+        output: Output root of the run.
+
+    Yields:
+        The ``(metrics, errors)`` of each target condition, in target order.
+
+    Raises:
+        ValueError: If a requested target site is absent from the dataset.
+    """
+    # Deferred: experiments.benchmarks imports catenets and torch at module level.
+    from experiments.benchmarks import atomic_write_parquet
+    dataset, draw, seed, beta, prepared = job.dataset, job.draw, job.seed, job.beta, job.prepared
+    condition = prepare_condition(prepared, dataset, beta, seed, config)
+    targets = (sorted(condition["evaluation"], key=int)
+               if config.target_sites == ("all",) else config.target_sites)
+    for target in targets:
+        metadata = dict(experiment=config.experiment_name, dataset=dataset,
+                        dgp_seed=draw, seed=seed, beta=beta, target_site=target,
+                        stage1_backend=config.stage1_backend)
+        leaf = (output / dataset / f"dgp{draw}" / f"seed{seed}"
+                / f"beta{beta:g}" / f"target{target}")
+        complete = leaf / "completion.json"
+        if config.resume and complete.exists():
+            prior = json.loads(complete.read_text())
+            LOGGER.info("Resume completed condition %s", metadata)
+            yield prior["metrics"], prior["errors"]
+            continue
+        if target not in condition["evaluation"]:
+            raise ValueError(f"Requested target {target} absent for {dataset}")
+        leaf.mkdir(parents=True, exist_ok=True)
+        LOGGER.info("Condition start %s", metadata)
+        training, target_idle = create_train_target_split(
+            condition["idle"], condition["on"], target)
+        evaluation = condition["evaluation"][target]
+        covariates = condition["covariates"]
+        strata = (evaluation["frame"][list(covariates)].drop_duplicates()
+                  .sort_values(list(covariates)))
+        baseline = manski_bounds(target_idle, strata, covariates, config.min_cell_count)
+        atomic_write_parquet(condition["row_audit"], leaf / "row_audit.parquet")
+        _write_json(prepared["provenance"], leaf / "dataset_provenance.json")
+
+        bounds, errors, timings, diagnostic = _per_cell_bounds(
+            condition, training, target_idle, baseline, strata, evaluation,
+            covariates, target, beta, seed, config, leaf)
+        for error in errors:
+            error.update(metadata)
+
+        # Reference effects enter only here, after every fitted arm has finished.
+        truth = evaluation_strata(evaluation, covariates)
+        _write_json(diagnostic, leaf / "sensitivity_diagnostic.json")
+        metrics, scored_frames = [], []
+        for method, frame in bounds.items():
+            scored, metric = score_bounds(frame, truth, covariates, method)
+            metric.update(metadata, reference_kind=evaluation["reference_kind"],
+                          fit_seconds=timings.get(method, float("nan")), **diagnostic)
+            metrics.append(metric)
+            scored_frames.append(scored)
+        atomic_write_parquet(pd.concat(scored_frames, ignore_index=True),
+                             leaf / "bounds_scored.parquet")
+        _write_json(
+            dict(metrics=metrics, errors=errors,
+                 status="fit_failures" if errors else "complete"), complete)
+        LOGGER.info("Condition done %s fit_failures=%s", metadata, len(errors))
+        yield metrics, errors
+
+
+def _run_grid_job_to_list(job: _GridJob, config: ComparisonConfig, output: Path
+                          ) -> list[tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
+    """Run :func:`_run_grid_job` to completion inside a pool worker."""
+    return list(_run_grid_job(job, config, output))
+
+
+#: Numerical-library thread caps set for the grid workers, as in :mod:`experiments.benchmarks`.
+_THREAD_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                     "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
+
+
+def _initialize_grid_worker() -> None:
+    """Cap numerical-library threads at one inside a grid worker."""
+    for variable in _THREAD_VARIABLES:
+        os.environ[variable] = "1"
+
+
+def _run_grid_parallel(jobs: Iterable[_GridJob], config: ComparisonConfig, output: Path
+                       ) -> Iterator[list[tuple[list[dict[str, Any]], list[dict[str, Any]]]]]:
+    """Run grid jobs in ``config.grid_n_jobs`` spawned processes, yielding in serial order.
+
+    Spawned workers inherit the thread caps from the environment, which is restored once the
+    pool closes. Each worker may still start its own ``config.n_jobs`` fit pool, so the run
+    uses up to ``grid_n_jobs * n_jobs`` processes.
+
+    Args:
+        jobs: Grid jobs in serial order.
+        config: Experiment settings.
+        output: Output root of the run.
+
+    Yields:
+        Each job's per-target ``(metrics, errors)`` list, in the order of ``jobs``.
+    """
+    saved = {variable: os.environ.get(variable) for variable in _THREAD_VARIABLES}
+    _initialize_grid_worker()
+    try:
+        with ProcessPoolExecutor(max_workers=config.grid_n_jobs,
+                                 mp_context=mp.get_context("spawn"),
+                                 initializer=_initialize_grid_worker) as executor:
+            yield from executor.map(_run_grid_job_to_list, jobs,
+                                    repeat(config), repeat(output))
+    finally:
+        for variable, value in saved.items():
+            if value is None:
+                os.environ.pop(variable, None)
+            else:
+                os.environ[variable] = value
 
 
 def run_comparison(config: ComparisonConfig, argv: Sequence[str] = ()) -> pd.DataFrame:
@@ -1030,72 +1191,24 @@ def run_comparison(config: ComparisonConfig, argv: Sequence[str] = ()) -> pd.Dat
     all_metrics: list[dict[str, Any]] = []
     all_errors: list[dict[str, Any]] = []
     condition_count = 0
-    for dataset in config.datasets:
-        draws = (None,) if dataset == "twins_reduced" else config.dgp_seeds
-        for draw in draws:
-            root = dataset_root(config, dataset, draw)
-            prepared = data.prepare_dataset(
-                data.BUILTIN_SPECS[dataset], root,
-                n_sites=6, min_site_rows=150)
-            for seed in config.seeds:
-                for beta in config.betas:
-                    condition = prepare_condition(prepared, dataset, beta, seed, config)
-                    targets = (sorted(condition["evaluation"], key=int)
-                               if config.target_sites == ("all",) else config.target_sites)
-                    for target in targets:
-                        condition_count += 1
-                        metadata = dict(experiment=config.experiment_name, dataset=dataset,
-                                        dgp_seed=draw, seed=seed, beta=beta, target_site=target,
-                                        stage1_backend=config.stage1_backend)
-                        leaf = (output / dataset / f"dgp{draw}" / f"seed{seed}"
-                                / f"beta{beta:g}" / f"target{target}")
-                        complete = leaf / "completion.json"
-                        if config.resume and complete.exists():
-                            prior = json.loads(complete.read_text())
-                            all_metrics.extend(prior["metrics"])
-                            all_errors.extend(prior["errors"])
-                            LOGGER.info("Resume completed condition %s", metadata)
-                            continue
-                        if target not in condition["evaluation"]:
-                            raise ValueError(f"Requested target {target} absent for {dataset}")
-                        leaf.mkdir(parents=True, exist_ok=True)
-                        LOGGER.info("Condition %s start %s", condition_count, metadata)
-                        training, target_idle = create_train_target_split(
-                            condition["idle"], condition["on"], target)
-                        evaluation = condition["evaluation"][target]
-                        covariates = condition["covariates"]
-                        strata = (evaluation["frame"][list(covariates)].drop_duplicates()
-                                  .sort_values(list(covariates)))
-                        baseline = manski_bounds(target_idle, strata, covariates, config.min_cell_count)
-                        atomic_write_parquet(condition["row_audit"], leaf / "row_audit.parquet")
-                        _write_json(prepared["provenance"], leaf / "dataset_provenance.json")
 
-                        bounds, errors, timings, diagnostic = _per_cell_bounds(
-                            condition, training, target_idle, baseline, strata, evaluation,
-                            covariates, target, beta, seed, config, leaf)
-                        for error in errors:
-                            error.update(metadata)
+    def record(metrics: list[dict[str, Any]], errors: list[dict[str, Any]]) -> None:
+        """Append one target condition's rows and rewrite the running totals."""
+        nonlocal condition_count
+        condition_count += 1
+        all_metrics.extend(metrics)
+        all_errors.extend(errors)
+        atomic_write_parquet(pd.DataFrame(all_metrics), output / "metrics.parquet")
+        _write_json(all_errors, output / "fit_failures.json")
 
-                        # Reference effects enter only here, after every fitted arm has finished.
-                        truth = evaluation_strata(evaluation, covariates)
-                        _write_json(diagnostic, leaf / "sensitivity_diagnostic.json")
-                        metrics, scored_frames = [], []
-                        for method, frame in bounds.items():
-                            scored, metric = score_bounds(frame, truth, covariates, method)
-                            metric.update(metadata, reference_kind=evaluation["reference_kind"],
-                                          fit_seconds=timings.get(method, float("nan")), **diagnostic)
-                            metrics.append(metric)
-                            scored_frames.append(scored)
-                        atomic_write_parquet(pd.concat(scored_frames, ignore_index=True),
-                                             leaf / "bounds_scored.parquet")
-                        _write_json(
-                            dict(metrics=metrics, errors=errors,
-                                 status="fit_failures" if errors else "complete"), complete)
-                        all_metrics.extend(metrics)
-                        all_errors.extend(errors)
-                        LOGGER.info("Condition %s done fit_failures=%s", condition_count, len(errors))
-                        atomic_write_parquet(pd.DataFrame(all_metrics), output / "metrics.parquet")
-                        _write_json(all_errors, output / "fit_failures.json")
+    if config.grid_n_jobs == 1:
+        for job in _grid_jobs(config):
+            for metrics, errors in _run_grid_job(job, config, output):
+                record(metrics, errors)
+    else:
+        for target_results in _run_grid_parallel(_grid_jobs(config), config, output):
+            for metrics, errors in target_results:
+                record(metrics, errors)
 
     result = pd.DataFrame(all_metrics)
     atomic_write_parquet(result, output / "metrics.parquet")
@@ -1127,7 +1240,8 @@ def build_parser(defaults: ComparisonConfig) -> argparse.ArgumentParser:
                         ("betas", float), ("epsilons", float), ("taus", float)):
         parser.add_argument("--" + name.replace("_", "-"), nargs="+", type=dtype,
                             default=getattr(defaults, name))
-    for name in ("min_cell_count", "max_fit_rows", "lp_posterior_samples", "n_jobs"):
+    for name in ("min_cell_count", "max_fit_rows", "lp_posterior_samples", "n_jobs",
+                 "grid_n_jobs"):
         parser.add_argument("--" + name.replace("_", "-"), type=int, default=getattr(defaults, name))
     parser.add_argument("--stage1-backend", choices=("tabicl_v2", "hierarchical_dirichlet", "xgboost"),
                         default=defaults.stage1_backend)

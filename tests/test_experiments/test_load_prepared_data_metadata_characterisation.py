@@ -41,7 +41,7 @@ import pandas as pd
 import pytest
 
 from experiments.osrct_data_utils import OSRCTConfig, load_prepared_data
-from experiments.utils import json_default
+from experiments.run_manifest import json_default
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

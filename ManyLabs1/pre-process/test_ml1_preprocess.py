@@ -361,7 +361,7 @@ def run_quick_validation():
 
     import tempfile
     with tempfile.TemporaryDirectory() as tmp_dir:
-        print(f"\nRunning preprocessing...")
+        print("\nRunning preprocessing...")
         pdata, covariates_list = preprocess_manylabs1(
             input_path=str(TEST_DATA_PATH),
             output_dir=tmp_dir,
@@ -397,7 +397,7 @@ def run_quick_validation():
         # Check 3: Treatment is binary
         iv_values = set(pdata['iv'].dropna().unique())
         if iv_values == {0, 1}:
-            print(f"[PASS] Treatment is binary (0, 1)")
+            print("[PASS] Treatment is binary (0, 1)")
             checks_passed += 1
         else:
             print(f"[FAIL] Treatment values: {iv_values}")
@@ -405,7 +405,7 @@ def run_quick_validation():
 
         # Check 4: No missing IV/DV
         if pdata['iv'].isna().sum() == 0 and pdata['dv'].isna().sum() == 0:
-            print(f"[PASS] No missing IV/DV values")
+            print("[PASS] No missing IV/DV values")
             checks_passed += 1
         else:
             print(f"[FAIL] Missing IV: {pdata['iv'].isna().sum()}, DV: {pdata['dv'].isna().sum()}")
@@ -423,7 +423,7 @@ def run_quick_validation():
         # Check 6: Covariates exist
         missing_covs = [c for c in EXPECTED['required_covariates'] if c not in pdata.columns]
         if not missing_covs:
-            print(f"[PASS] All required covariates present")
+            print("[PASS] All required covariates present")
             checks_passed += 1
         else:
             print(f"[FAIL] Missing covariates: {missing_covs}")

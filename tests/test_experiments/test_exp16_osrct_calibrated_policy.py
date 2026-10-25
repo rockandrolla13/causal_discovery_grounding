@@ -6,21 +6,22 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import experiments.exp16_osrct_calibrated_policy as exp16
+import experiments.osrct_target_pipeline as target_pipeline
 import experiments.naturalness_plotting as plotting
-from experiments.exp16_osrct_calibrated_policy import (
+from experiments.osrct_target_pipeline import (
     DEFAULT_GP_POSTERIOR_SAMPLES,
     Exp16Config,
     _leaf_output_dir,
     _output_group_key,
     _run_output_dir,
     complete_lp_strata,
-    parse_args,
     score_rct_intervals,
     solve_choices_lp_posterior_samples,
 )
+from experiments.exp16_osrct_calibrated_policy import parse_args
 from experiments.naturalness_plotting import make_exp16_plots
-from experiments.utils import DEFAULT_LP_POSTERIOR_N_JOBS, write_run_manifest
+from experiments.run_config import DEFAULT_LP_POSTERIOR_N_JOBS
+from experiments.run_manifest import write_run_manifest
 
 
 def test_exp16_does_not_import_removed_experiment_modules() -> None:
@@ -152,12 +153,12 @@ def test_skip_calibration_returns_zero_correction_without_scoring(
     """Skipping calibration should preserve held-out roles and avoid fitting."""
 
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "calibrate_endpoint_q",
         lambda **_kwargs: pytest.fail("calibration must be skipped"),
     )
     q, rank, sentinel, scores, bounds = (
-        exp16._calibrate_endpoint_q_if_enabled(
+        target_pipeline._calibrate_endpoint_q_if_enabled(
             calibration_sites=("held_out",),
             source_training_data={"held_out": pd.DataFrame()},
             grounder=object(),
@@ -193,12 +194,12 @@ def test_tabicl_target_probabilities_are_reused_only_for_identical_calls(
         return marker
 
     monkeypatch.setattr(
-        exp16,
-        "_estimate_target_trigger_quantities",
+        target_pipeline,
+        "estimate_target_trigger_quantities",
         fake_estimate,
     )
     idle = pd.DataFrame()
-    reusable = exp16._fit_reusable_tabicl_target_quantities(
+    reusable = target_pipeline.fit_reusable_tabicl_target_quantities(
         idle,
         Exp16Config(
             stage1_backend="tabicl_v2",
@@ -210,7 +211,7 @@ def test_tabicl_target_probabilities_are_reused_only_for_identical_calls(
     assert reusable is marker
     assert calls == ["tabicl_v2"]
 
-    not_reusable = exp16._fit_reusable_tabicl_target_quantities(
+    not_reusable = target_pipeline.fit_reusable_tabicl_target_quantities(
         idle,
         Exp16Config(
             stage1_backend="tabicl_v2",
@@ -219,7 +220,7 @@ def test_tabicl_target_probabilities_are_reused_only_for_identical_calls(
             lp_probability_covariates=("resp_age_bin",),
         ),
     )
-    different_backend = exp16._fit_reusable_tabicl_target_quantities(
+    different_backend = target_pipeline.fit_reusable_tabicl_target_quantities(
         idle,
         Exp16Config(
             stage1_backend="tabicl_v2",
@@ -247,8 +248,8 @@ def test_policy_site_reuses_one_safe_tabicl_probability_table(
     )
 
     monkeypatch.setattr(
-        exp16,
-        "_fit_reusable_tabicl_target_quantities",
+        target_pipeline,
+        "fit_reusable_tabicl_target_quantities",
         lambda *_args: marker,
     )
 
@@ -276,20 +277,20 @@ def test_policy_site_reuses_one_safe_tabicl_probability_table(
         received["lp"] = observed_quantities
         return bounds
 
-    monkeypatch.setattr(exp16, "_policy_candidates", fake_candidates)
+    monkeypatch.setattr(target_pipeline, "build_policy_candidates", fake_candidates)
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "select_policy_choices",
         lambda candidates, _top_k, mode: candidates.copy(),
     )
-    monkeypatch.setattr(exp16, "solve_choices_lp", fake_solve)
+    monkeypatch.setattr(target_pipeline, "solve_choices_lp", fake_solve)
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "complete_lp_strata",
         lambda current, _idle, _config: current,
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "score_rct_intervals",
         lambda current, _rct, _config: (
             current,
@@ -297,7 +298,7 @@ def test_policy_site_reuses_one_safe_tabicl_probability_table(
         ),
     )
 
-    exp16.evaluate_policy_site(
+    target_pipeline.evaluate_policy_site(
         site="held_out",
         site_data=idle,
         grounder=object(),
@@ -368,13 +369,13 @@ def test_top_k_tuning_reuses_tabicl_table_across_k_values(
         return bounds, choices, summary
 
     monkeypatch.setattr(
-        exp16,
-        "_fit_reusable_tabicl_target_quantities",
+        target_pipeline,
+        "fit_reusable_tabicl_target_quantities",
         fake_fit,
     )
-    monkeypatch.setattr(exp16, "evaluate_policy_site", fake_evaluate)
+    monkeypatch.setattr(target_pipeline, "evaluate_policy_site", fake_evaluate)
 
-    exp16.tune_policy_top_k(
+    target_pipeline.tune_policy_top_k(
         tuning_sites=sites,
         source_training_data=source_data,
         grounder=object(),
@@ -425,7 +426,7 @@ def test_posterior_lp_reuses_supplied_deterministic_tabicl_table(
             )
 
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "estimate_target_observed_binary_quantities",
         lambda *_args, **_kwargs: pytest.fail("TabICL must not be refitted"),
     )
@@ -446,17 +447,17 @@ def test_posterior_lp_reuses_supplied_deterministic_tabicl_table(
         return pd.DataFrame({"status": ["optimal"]})
 
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "solve_target_bounds_from_observed_binary_quantities",
         fake_solve,
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "complete_lp_strata",
         lambda current, _idle, _config: current,
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "summarize_lp_posterior_bounds",
         lambda _samples, _covariates: pd.DataFrame({"summary": [1]}),
     )
@@ -514,9 +515,9 @@ def test_all_triggered_fits_combined_training_cohort_once(
         fit_calls.append(tuple(training_sites))
         return final_grounder
 
-    monkeypatch.setattr(exp16, "_fit_grounder_for_sites", fake_fit_grounder)
+    monkeypatch.setattr(target_pipeline, "_fit_grounder_for_sites", fake_fit_grounder)
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "tune_policy_top_k",
         lambda **_kwargs: pytest.fail("all_triggered must not tune top_k"),
     )
@@ -528,7 +529,7 @@ def test_all_triggered_fits_combined_training_cohort_once(
         policy_summary,
         tuning_bounds,
         tuning_choices,
-    ) = exp16._fit_grounders_and_select_policy(
+    ) = target_pipeline._fit_grounders_and_select_policy(
         source_training_data=source_data,
         roles=roles,
         config=Exp16Config(candidate_selection_mode="all_triggered"),
@@ -591,8 +592,8 @@ def test_top_k_mode_retains_proper_fit_tuning_and_final_refit(
             pd.DataFrame({"choice": [1]}),
         )
 
-    monkeypatch.setattr(exp16, "_fit_grounder_for_sites", fake_fit_grounder)
-    monkeypatch.setattr(exp16, "tune_policy_top_k", fake_tune_policy_top_k)
+    monkeypatch.setattr(target_pipeline, "_fit_grounder_for_sites", fake_fit_grounder)
+    monkeypatch.setattr(target_pipeline, "tune_policy_top_k", fake_tune_policy_top_k)
 
     (
         proper_grounder,
@@ -601,7 +602,7 @@ def test_top_k_mode_retains_proper_fit_tuning_and_final_refit(
         policy_summary,
         tuning_bounds,
         tuning_choices,
-    ) = exp16._fit_grounders_and_select_policy(
+    ) = target_pipeline._fit_grounders_and_select_policy(
         source_training_data=source_data,
         roles=roles,
         config=Exp16Config(candidate_selection_mode="best_per_covariate"),
@@ -1170,13 +1171,13 @@ def test_candidate_state_map_follows_extra_candidates() -> None:
     """Real candidates keep the reporting state; extras get their own."""
 
     config = Exp16Config(naturalness_extra_candidates=("noise_01", "noise_02"))
-    states = exp16._candidate_state_map(config)
+    states = target_pipeline._candidate_state_map(config)
     base = tuple(config.covariates)
 
     assert states["resp_age_bin"] == base
     assert states["noise_02"] == (*base, "noise_02")
-    assert exp16._uses_candidate_states(config)
-    assert not exp16._uses_candidate_states(Exp16Config())
+    assert target_pipeline._uses_candidate_states(config)
+    assert not target_pipeline._uses_candidate_states(Exp16Config())
 
 
 def test_solve_choices_lp_routes_candidate_states_to_state_solver(
@@ -1192,19 +1193,19 @@ def test_solve_choices_lp_routes_candidate_states_to_state_solver(
         return pd.DataFrame({"status": ["optimal"]})
 
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "solve_candidate_state_bounds_from_observed_binary_quantities",
         fake_state_solver,
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "solve_target_bounds_from_observed_binary_quantities",
         lambda *_args, **_kwargs: pytest.fail("the single-state solver must not run"),
     )
     marker = {("state",): object()}
     config = Exp16Config(naturalness_extra_candidates=("noise_01",))
 
-    bounds = exp16.solve_choices_lp(
+    bounds = target_pipeline.solve_choices_lp(
         pd.DataFrame(),
         pd.DataFrame({"covariate": ["noise_01"]}),
         config,
@@ -1275,10 +1276,10 @@ def test_target_trigger_grid_collapses_to_one_row_per_candidate() -> None:
         "target_triggered": [True, False, False, False],
     })
 
-    summary = exp16._summarize_target_trigger_grid(grid)
+    summary = target_pipeline._summarize_target_trigger_grid(grid)
 
     assert summary["covariate"].tolist() == ["a", "noise_01"]
     assert summary["n_triggered_grid_points"].tolist() == [1, 0]
     assert summary["target_triggered_any"].tolist() == [True, False]
     assert summary["n_grid_points"].tolist() == [2, 2]
-    assert exp16._summarize_target_trigger_grid(None).empty
+    assert target_pipeline._summarize_target_trigger_grid(None).empty

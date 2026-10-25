@@ -1,6 +1,5 @@
 """Tests for the parallel Exp18 CB meta-learner comparison helpers."""
 
-import json
 import subprocess
 from pathlib import Path
 
@@ -23,7 +22,12 @@ from dataclasses import replace
 
 from scipy.special import expit
 
-from experiments.benchmarks import BLEARNER_GAMMA_GRID, WIDTH_MATCHED_GAMMA
+from experiments.benchmarks import (
+    BLEARNER_GAMMA_GRID,
+    WIDTH_MATCHED_GAMMA,
+    cb_pseudo_outcome,
+    wb_pseudo_outcome,
+)
 from experiments.exp18_cb_meta_learner_comparison import (
     Exp18Config,
     FitResult,
@@ -33,9 +37,7 @@ from experiments.exp18_cb_meta_learner_comparison import (
     _finalize_binary_cate_intersection,
     _leaf_output_dir,
     _ordered_pairs,
-    cb_pseudo_outcome,
     parse_args,
-    wb_pseudo_outcome,
 )
 
 
@@ -452,7 +454,7 @@ def test_blearner_commit_validation_allows_the_exact_non_owned_checkout(
         )
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    exp18._VALIDATED_BLEARNER_REPOSITORIES.discard(repository)
+    benchmarks._VALIDATED_BLEARNER_REPOSITORIES.discard(repository)
 
     exp18._validate_blearner_repository(repository)
 
@@ -467,7 +469,7 @@ def test_blearner_commit_validation_allows_the_exact_non_owned_checkout(
             "HEAD",
         ]
     ]
-    assert repository in exp18._VALIDATED_BLEARNER_REPOSITORIES
+    assert repository in benchmarks._VALIDATED_BLEARNER_REPOSITORIES
 
 
 def test_wb_pseudo_outcome_matches_binary_manski_endpoints() -> None:
@@ -510,11 +512,11 @@ def test_paper_pw_learner_keeps_catenets_propensity_first_stage(
         return torch.tensor([0.25, 0.75])
 
     monkeypatch.setattr(
-        exp18._PaperPWLearner,
+        benchmarks._PaperPWLearner,
         "_impute_propensity",
         fake_propensity,
     )
-    learner = exp18._PaperPWLearner(
+    learner = benchmarks._PaperPWLearner(
         n_unit_in=1,
         binary_y=False,
         n_iter=1,

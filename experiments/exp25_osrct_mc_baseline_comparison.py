@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib
 import itertools
 import json
 import math
@@ -37,11 +36,9 @@ import pandas as pd
 import yaml
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from experiments.exp16_osrct_calibrated_policy import (
+from causal_grounding.loaders.schema import MANYLABS_COVARIATES, OUTCOME_COLUMN, TREATMENT_COLUMN
+from causal_grounding.manski import manski_bounds
+from experiments.osrct_target_pipeline import (
     DEFAULT_EXP16_BETAS,
     DEFAULT_EXP16_PATTERNS,
     DEFAULT_EXP16_STUDIES,
@@ -77,12 +74,15 @@ from experiments.benchmarks import (
     parse_gamma,
     require_parquet_engine as _shared_require_parquet_engine,
 )
-from experiments.naturalness_comparison import balke_pearl_bounds, manski_bounds
-from experiments.utils import (
+from experiments.naturalness_comparison import balke_pearl_bounds
+from experiments.osrct_files import load_osrct_benchmark_module
+from experiments.run_config import (
     resolve_lp_probability_backend,
     resolve_target_trigger_probability_backend,
-    write_run_manifest,
 )
+from experiments.run_manifest import write_run_manifest
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 EXP25_NAME = "exp25_osrct_mc_baseline_comparison"
@@ -104,11 +104,7 @@ EXP25_METHOD_COLORS = {
     "cb_ipw": META_LEARNER_COLORS["cb_ipw"],
     "cb_dr": META_LEARNER_COLORS["cb_dr"],
 }
-EXP25_STRATUM_COLUMNS = (
-    "resp_age_bin",
-    "resp_gender_bin",
-    "resp_polideo_bin",
-)
+EXP25_STRATUM_COLUMNS = MANYLABS_COVARIATES
 EXP25_IDENTITY_COLUMNS = (
     "study",
     *EXP25_STRATUM_COLUMNS,
@@ -825,11 +821,7 @@ def _write_or_validate_bundle_manifest(config: Exp25Config) -> Path:
 def _load_osrct_grid_generator() -> Any:
     """Load the existing OSRCT benchmark grid generator lazily."""
 
-    code_dir = PROJECT_ROOT / "osrct_benchmark_v1.0" / "code"
-    if str(code_dir) not in sys.path:
-        sys.path.insert(0, str(code_dir))
-    module = importlib.import_module("generate_confounded_datasets")
-    return module.generate_full_grid
+    return load_osrct_benchmark_module("generate_confounded_datasets").generate_full_grid
 
 
 def generate_replication_osrct_grid(
@@ -1269,7 +1261,7 @@ def identification_bound_intervals(
         idle = target_idle_by_study[str(study)]
         # The bound helpers compare and bit-pack the covariates as integers.
         idle = idle.assign(**{name: idle[name].astype(int) for name in covariates},
-                           iv=idle["iv"].astype(int), dv_binary=idle["dv_binary"].astype(int))
+                           iv=idle[TREATMENT_COLUMN].astype(int), dv_binary=idle[OUTCOME_COLUMN].astype(int))
         strata = study_identities[covariates].astype(int).drop_duplicates()
         strata = strata.reset_index(drop=True)
         # The recomputed bins must reproduce the primary run's target counts;
@@ -1395,7 +1387,7 @@ def _aggregate_gamma_calibrations(
         return pd.DataFrame()
     paths = sorted(
         (output_dir / "replications").glob(
-            f"replication=*/" + filename
+            "replication=*/" + filename
         )
     )
     if not paths:

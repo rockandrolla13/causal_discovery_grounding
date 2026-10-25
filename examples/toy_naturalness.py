@@ -65,9 +65,10 @@ from causal_grounding import (  # noqa: E402
     NaturalnessGrounder,
     TargetNaturalnessPolicy,
     estimate_target_observed_binary_quantities,
-    solve_target_bounds_from_observed_binary_quantities,
+    posterior_target_bounds,
 )
 from causal_grounding.balke_pearl import balke_pearl_interval  # noqa: E402
+from causal_grounding.manski import manski_interval  # noqa: E402
 
 COVARIATES = ["Z1", "Z2"]
 #: Naturalness thresholds ``epsilon`` and the relevance grid ``tau >= 0.075``
@@ -220,27 +221,7 @@ def naturalness_bounds(
 
     conditions = policy.to_frame(selected_only=True)
     draws = grounder.sample_tolerances(conditions, n_samples=n_draws, random_seed=seed)
-    solved = pd.concat(
-        [
-            solve_target_bounds_from_observed_binary_quantities(
-                quantities,
-                draw,
-                return_details=True,
-                include_intervention_diagnostics=False,
-            )
-            for _, draw in draws.groupby("sample_id")
-        ],
-        ignore_index=True,
-    )
-    solved["optimal"] = solved["status"].eq("optimal")
-    summary = solved.groupby(COVARIATES).agg(p_optimal=("optimal", "mean")).reset_index()
-    endpoints = (
-        solved[solved["optimal"]].groupby(COVARIATES)[["lower", "upper"]].mean().reset_index()
-    )
-    bounds = strata.merge(summary, on=COVARIATES, how="left").merge(
-        endpoints, on=COVARIATES, how="left"
-    )
-    return bounds[[*COVARIATES, "lower", "upper", "p_optimal"]], conditions
+    return posterior_target_bounds(quantities, draws, COVARIATES), conditions
 
 
 def reference_bounds(target: pd.DataFrame) -> pd.DataFrame:
@@ -252,10 +233,7 @@ def reference_bounds(target: pd.DataFrame) -> pd.DataFrame:
     """
     rows = []
     for (z1, z2), cell in target.groupby(COVARIATES):
-        p_x1 = cell["X"].mean()
-        mean_y1 = cell.loc[cell["X"].eq(1), "Y"].mean()
-        mean_y0 = cell.loc[cell["X"].eq(0), "Y"].mean()
-        manski_lower = mean_y1 * p_x1 - mean_y0 * (1 - p_x1) - p_x1
+        manski_lower, manski_upper = manski_interval(cell, treatment="X", outcome="Y")
         stratum = target[target["Z2"].eq(z2)]
         # joint[z1, y, x] = P(Y=y, X=x | Z1=z1, Z2=z2)
         joint = np.zeros((2, 2, 2))
@@ -269,7 +247,7 @@ def reference_bounds(target: pd.DataFrame) -> pd.DataFrame:
             "Z1": z1,
             "Z2": z2,
             "manski_lower": manski_lower,
-            "manski_upper": manski_lower + 1.0,
+            "manski_upper": manski_upper,
             "balke_pearl_lower": balke_pearl.lower,
             "balke_pearl_upper": balke_pearl.upper,
         })

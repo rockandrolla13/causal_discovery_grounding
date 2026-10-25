@@ -5,20 +5,22 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from experiments.manylabs_cohort import (
+from causal_grounding.loaders.cohort import (
     OBSERVED_GENDER_COHORT_RULE,
     restrict_to_observed_gender,
 )
-from experiments.exp16_osrct_calibrated_policy import Exp16Config
-from experiments.utils import (
+from experiments.osrct_target_pipeline import Exp16Config
+from experiments.latex_tables import render_latex_table
+from experiments.lp_summaries import summarize_lp_posterior_bounds
+from experiments.run_config import (
+    ProbabilityModelOptions,
     build_configured_naturalness_grid,
     build_lp_probability_model_kwargs,
     build_stage1_predictor_kwargs,
-    render_latex_table,
     resolve_lp_probability_backend,
     resolve_target_trigger_probability_backend,
-    summarize_lp_posterior_bounds,
 )
 
 
@@ -168,3 +170,39 @@ def test_tabicl_checkpoint_sharing_is_opt_in() -> None:
         build_stage1_predictor_kwargs("tabicl_v2", shared)["predictor_kwargs"]["share_checkpoint"]
         is True
     )
+
+
+def test_probability_model_options_default_omitted_fields() -> None:
+    """A config lacking every option field gets the declared defaults."""
+
+    options = ProbabilityModelOptions.from_config(SimpleNamespace(seed=3))
+
+    assert options == ProbabilityModelOptions()
+    assert build_lp_probability_model_kwargs(SimpleNamespace(seed=3), "xgboost") == {
+        "use_grid_search": False,
+        "n_estimators": 200,
+        "max_depth": 5,
+        "learning_rate": 0.10,
+        "random_state": 3,
+        "n_jobs": None,
+    }
+
+
+def test_probability_model_options_reject_misspelled_field() -> None:
+    """A misspelled option field raises instead of silently using the default."""
+
+    typo = SimpleNamespace(seed=3, stage1_xgboost_cv_fold=2)
+
+    with pytest.raises(ValueError, match="stage1_xgboost_cv_fold"):
+        build_stage1_predictor_kwargs("xgboost", typo)
+    with pytest.raises(ValueError, match="stage1_xgboost_cv_fold"):
+        build_lp_probability_model_kwargs(typo, "empirical")
+
+
+def test_exp16_config_options_are_all_declared() -> None:
+    """Every option-prefixed Exp16Config field is a declared option field."""
+
+    options = ProbabilityModelOptions.from_config(Exp16Config(tabicl_device="cpu"))
+
+    assert options.tabicl_device == "cpu"
+    assert options.tabicl_share_checkpoint is False

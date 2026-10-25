@@ -106,7 +106,7 @@ from examples.toy_naturalness import simulate_toy_data
 # Target: observational rows only. truth: the target's true CATE by stratum.
 sources, target, truth = simulate_toy_data(seed=0)
 
-model = Naturalness(covariates=["Z1", "Z2"], n_draws=1000, random_state=0)
+model = Naturalness(covariates=["Z1", "Z2"], n_draws=1000)  # random_state=0 by default
 model.fit(sources)                 # Stages 1-3 on the sources
 bounds = model.get_bounds(target)  # target conditions, then the target LP
 print(bounds.merge(truth, on=["Z1", "Z2"]).round(3))
@@ -120,15 +120,15 @@ print(bounds.merge(truth, on=["Z1", "Z2"]).round(3))
 3   1   1 -0.290  0.261        1.0      0.000
 ```
 
-`fit` runs Stages 1-3 on the sources with `NaturalnessGrounder`: where $I_j(\epsilon)$ and $D_j(\tau)$ fire, and Gaussian-process surfaces for the learned tolerances $c$ and $d$. `get_bounds` finds the conditions that fire at the target with `TargetNaturalnessPolicy`, propagates tolerance draws through the target linear program, and averages the endpoints over the draws whose program is optimal. `p_optimal` is the share of such draws. `get_bounds(target, return_conditions=True)` also returns the target conditions. `fit` accepts a mapping of site frames, one long frame with `site_col=`, or a loader `SiteBundle`. The default grids are the paper's (`PAPER_EPSILONS`, `PAPER_TAUS`). [`examples/toy_naturalness.py`](examples/toy_naturalness.py) spells out the same steps with the lower-level classes.
+`fit` runs Stages 1-3 on the sources with `NaturalnessGrounder`: where $I_j(\epsilon)$ and $D_j(\tau)$ fire, and Gaussian-process surfaces for the learned tolerances $c$ and $d$. `get_bounds` finds the conditions that fire at the target with `TargetNaturalnessPolicy`, propagates tolerance draws through the target linear program, and averages the endpoints over the draws whose program is optimal. `p_optimal` is the share of such draws. `get_bounds(target, return_conditions=True)` also returns the target conditions, and `return_policy=True` the full target policy. `get_bounds` leaves the fitted model unchanged. `random_state` defaults to 0, so repeated runs give the same bounds. `n_jobs=4` solves the per-draw programs on four threads with the same result. `fit` accepts a mapping of site frames, one long frame with `site_col=`, or a loader `SiteBundle`. The default grids are the paper's (`PAPER_EPSILONS`, `PAPER_TAUS`). [`examples/toy_naturalness.py`](examples/toy_naturalness.py) spells out the same steps with the lower-level classes.
 
 scikit-learn may raise a `ConvergenceWarning` while the Gaussian processes are fitted, when a length-scale reaches its bound because a tolerance surface is flat along that axis. It is harmless here, and `fit` silences it.
 
 To use your own data, give every site the same discrete covariate columns, a binary treatment, a binary outcome and a regime column. Source sites need both regimes; the target needs observational rows only. A few points to keep in mind:
 
-- **Probability model.** `stage1_backend="empirical"` uses smoothed cell frequencies. The paper uses `"tabicl_v2"` (TabICLv2) for Stage 1 and for the target probabilities (`Naturalness(..., stage1_backend="tabicl_v2", target_backend="tabicl_v2")`). `"xgboost"` and `"hierarchical_dirichlet"` are also available.
-- **When nothing fires.** If no condition fires at the target, `model.policy_result_.status` is `"no_triggered_candidates"` and Naturalness abstains: every endpoint is `NaN` and `p_optimal` is 0. A stratum whose program has no optimal draw also has no Naturalness interval. The paper scores both cases with the Manski interval.
-- **Source sites.** In Experiment I, the paper's pipeline (`experiments/exp16_osrct_calibrated_policy.py`) holds out 9 of the 35 source sites for endpoint calibration and 11 more for policy tuning, and fits its grounder on the remaining 15. The example fits on every source.
+- **Probability model.** `stage1_backend="empirical"` uses smoothed cell frequencies. The paper uses `"tabicl_v2"` (TabICLv2) for Stage 1 and for the target probabilities (`Naturalness(..., stage1_backend="tabicl_v2", target_backend="tabicl_v2")`). The target trigger screen uses `target_backend` too, unless `trigger_backend=` names another one. `"xgboost"` and `"hierarchical_dirichlet"` are also available. `target_backend="hierarchical_dirichlet_draws"` draws one target PMF per tolerance draw.
+- **When nothing fires.** If no condition fires at the target, the policy from `get_bounds(target, return_policy=True)` has `status` `"no_triggered_candidates"` and Naturalness abstains: every endpoint is `NaN` and `p_optimal` is 0. A stratum whose program has no optimal draw also has no Naturalness interval. The paper scores both cases with the Manski interval.
+- **Source sites.** In Experiment I, the paper's pipeline (`experiments/exp25_osrct_mc_baseline_comparison.py`, on top of the site split in `experiments/exp16_osrct_calibrated_policy.py`) holds out 9 of the 35 source sites for endpoint calibration and 11 more for policy tuning, and fits its grounder on the remaining 15. The 9 come from Exp25's calibration settings (`calibration_fraction=0.25`, `min_calibration_sites=9`), which replace Exp16's defaults. The example fits on every source.
 
 ## Reproducing the paper
 
@@ -164,7 +164,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-The suite runs on the CPU, in about 12 minutes on 8 cores. Tests that need data not included here (the ManyLabs1 file, the pre-generated OSRCT benchmark samples) are skipped.
+The suite runs on the CPU. It takes a few minutes on an idle 16-thread machine, and much longer under load. Tests that need data not included here (the ManyLabs1 file, the pre-generated OSRCT benchmark samples) are skipped.
 
 ## Not included
 

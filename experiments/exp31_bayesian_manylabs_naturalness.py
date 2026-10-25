@@ -49,12 +49,11 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
 
-from causal_grounding import balke_pearl  # noqa: E402
-from causal_grounding import bayesian_modular_naturalness as bayes  # noqa: E402
-from causal_grounding.bayesian_modular_naturalness import (  # noqa: E402
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
+from causal_grounding import balke_pearl
+from causal_grounding import bayesian_modular_naturalness as bayes
+from causal_grounding.bayesian_modular_naturalness import (
     GP_NUGGET,
     compute_source_evidence,
     draw_random_identified_sets,
@@ -67,12 +66,16 @@ from causal_grounding.bayesian_modular_naturalness import (  # noqa: E402
     raw_pmf_draws_from_frame,
     raw_pmf_draws_to_frame,
 )
-from causal_grounding.naturalness_statistics import safe_sorted  # noqa: E402
-from causal_grounding.predictors import TABICL_V2_CLASSIFIER_CHECKPOINT  # noqa: E402
-from causal_grounding.train_target_split import create_train_target_split  # noqa: E402
-from experiments.exp16_osrct_calibrated_policy import Exp16Config, _split_site_regimes  # noqa: E402
-from experiments.osrct_data_utils import load_prepared_data  # noqa: E402
-from experiments.utils import write_run_manifest  # noqa: E402
+from causal_grounding.naturalness_statistics import safe_sorted
+from causal_grounding.paper_grids import PAPER_BETAS
+from causal_grounding.predictors import TABICL_V2_CLASSIFIER_CHECKPOINT
+from causal_grounding.seeding import sha256_seed
+from causal_grounding.train_target_split import create_train_target_split
+from experiments.osrct_target_pipeline import Exp16Config, split_site_regimes
+from experiments.osrct_data_utils import load_prepared_data
+from experiments.run_manifest import write_run_manifest
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 LOGGER = logging.getLogger(__name__)
@@ -89,7 +92,7 @@ STUDIES = ("allowedforbidden", "gainloss")
 ALL_STUDIES = STUDIES + DEFERRED_STUDIES
 PATTERNS = ("age", "gender", "polideo")
 #: OSRCT selection strengths: the beta grid of the Exp25 results the report's Exp25 bridge reads.
-BETAS = (0.5, 1.0, 1.5, 2.0)
+BETAS = PAPER_BETAS
 N_REPLICATIONS = 20
 BASE_SEED = 62
 SEEDS = tuple(BASE_SEED + replication for replication in range(N_REPLICATIONS))
@@ -282,6 +285,7 @@ SOURCE_FILES = (
     "causal_grounding/naturalness_grounder.py",
     "causal_grounding/predictors.py",
     "causal_grounding/naturalness_statistics.py",
+    "causal_grounding/paper_grids.py",
     "causal_grounding/balke_pearl.py",
     "causal_grounding/train_target_split.py",
     "causal_grounding/loaders/manylabs_rct.py",
@@ -289,10 +293,16 @@ SOURCE_FILES = (
     "causal_grounding/loaders/covariates.py",
     "causal_grounding/loaders/cohort.py",
     "experiments/exp16_osrct_calibrated_policy.py",
+    "experiments/osrct_target_pipeline.py",
     "experiments/exp25_osrct_mc_baseline_comparison.py",
     "experiments/osrct_data_utils.py",
-    "experiments/manylabs_cohort.py",
-    "experiments/utils.py",
+    "experiments/osrct_files.py",
+    "experiments/covariate_preparation.py",
+    "experiments/run_config.py",
+    "experiments/conformal_bounds.py",
+    "experiments/lp_summaries.py",
+    "experiments/run_manifest.py",
+    "experiments/latex_tables.py",
     "osrct_benchmark_v1.0/code/generate_confounded_datasets.py",
     "osrct_benchmark_v1.0/code/osrct.py",
     "osrct_benchmark_v1.0/code/experimental_grid.py",
@@ -777,7 +787,7 @@ def _stream_seed(key: ConditionKey, *parts: Any) -> int:
     Seeds exclude the arm, so arms share common random numbers and read the same PMF draws of a condition.
     """
 
-    return bayes._stable_seed(EXPERIMENT_NAME, key.study, key.pattern, _format_beta(key.beta), key.seed, *parts)
+    return sha256_seed(EXPERIMENT_NAME, key.study, key.pattern, _format_beta(key.beta), key.seed, *parts)
 
 
 # --- Provenance -----------------------------------------------------------------
@@ -1024,7 +1034,7 @@ def _loader_config(key: ConditionKey, prepared_root: Path, rct_path: Path) -> Ex
     """Return the Exp16 loading configuration Exp25 uses, for one condition.
 
     ``disjoint_validation_ids`` stays at Exp25's ``False``, so
-    :func:`_split_site_regimes` returns the full target RCT as the reference.
+    :func:`split_site_regimes` returns the full target RCT as the reference.
     """
 
     return Exp16Config(
@@ -1076,9 +1086,9 @@ def _bayes_frame(frame: pd.DataFrame, regime: str | None = None) -> pd.DataFrame
         output["F"] = regime
     output["id"] = _participant_ids(output["id"])
     output["site"] = output["site"].astype(str)
-    for column in ("iv", "dv_binary", *COVARIATES):
+    for column in (TREATMENT_COLUMN, OUTCOME_COLUMN, *COVARIATES):
         output[column] = pd.to_numeric(output[column], errors="raise").astype(np.int8)
-    columns = ["id", "site", "F", "iv", "dv_binary", *COVARIATES] if "F" in output else ["id", "site", "iv", "dv_binary", *COVARIATES]
+    columns = ["id", "site", "F", TREATMENT_COLUMN, OUTCOME_COLUMN, *COVARIATES] if "F" in output else ["id", "site", TREATMENT_COLUMN, OUTCOME_COLUMN, *COVARIATES]
     return output[columns].reset_index(drop=True)
 
 
@@ -1087,7 +1097,7 @@ def load_condition_data(key: ConditionKey, prepared_root: Path, rct_path: Path) 
 
     Follows Exp16's ``run_one_target`` under Exp25's configuration: the complete-case rule (observed ``resp_sex``)
     and binary encodings of :func:`load_prepared_data`, the source/target split of
-    :func:`create_train_target_split`, and every target randomized row as the reference (:func:`_split_site_regimes`).
+    :func:`create_train_target_split`, and every target randomized row as the reference (:func:`split_site_regimes`).
 
     Args:
         key: The condition.
@@ -1117,7 +1127,7 @@ def load_condition_data(key: ConditionKey, prepared_root: Path, rct_path: Path) 
         ignore_index=True,
         sort=False,
     )
-    _, reference_rows, removed = _split_site_regimes(target_combined, config)
+    _, reference_rows, removed = split_site_regimes(target_combined, config)
     if removed:
         raise AssertionError("Exp25's reference convention keeps every target randomized row")
     source_sites = sorted(str(site) for site in source_training)
@@ -1254,7 +1264,7 @@ def _randomized_pair_filters(
 
     covariates = list(COVARIATES)
     randomized = sources.loc[sources.F.eq("on")]
-    counts = randomized.groupby([randomized.site.astype(str), "iv", *covariates]).size().to_dict()
+    counts = randomized.groupby([randomized.site.astype(str), TREATMENT_COLUMN, *covariates]).size().to_dict()
 
     def site_filter(site: str) -> Callable[[tuple[int, ...], tuple[int, ...]], bool]:
         """Return the filter of one site."""
@@ -1332,7 +1342,7 @@ def _surface_diagnostic_row(
         "candidate": posterior.candidate,
         "tolerance_kind": posterior.tolerance_kind,
         "root_seed": int(root_seed),
-        "nuts_seed": int(bayes._stable_seed(root_seed, posterior.imputation_id, posterior.candidate, posterior.tolerance_kind, attempt)),
+        "nuts_seed": int(sha256_seed(root_seed, posterior.imputation_id, posterior.candidate, posterior.tolerance_kind, attempt)),
         **{key: value for key, value in diagnostics.items() if not isinstance(value, (dict, list))},
         "excluded": False,
     }
@@ -1425,7 +1435,7 @@ def fit_surface_mixture(
                 rows.append({
                     "imputation_index": int(imputation_index),
                     "root_seed": int(root_seed),
-                    "nuts_seed": int(bayes._stable_seed(root_seed, failure["imputation_id"], failure["candidate"],
+                    "nuts_seed": int(sha256_seed(root_seed, failure["imputation_id"], failure["candidate"],
                                                         failure["tolerance_kind"], failure.get("attempt", "second_retry"))),
                     **{name: value for name, value in failure.items() if not isinstance(value, (dict, list))},
                     "excluded": True,
@@ -2377,8 +2387,8 @@ def _predictive_site_fit(on, idle, site, support, overlap, key, device, sample_i
     z_values, n_idle_z, n_idle_xz = support
     kwargs = {**TABICL_PREDICTOR_KWARGS, "random_state": int(key.seed), "device": device}
     p_x1, p_y1, p_do = bayes._tabicl_site_probabilities(
-        on, idle, site_id=site, z_values=z_values, covariates=list(COVARIATES), treatment="iv",
-        outcome="dv_binary", regime_col="F", on_value="on", idle_value="idle", predictor_kwargs=kwargs,
+        on, idle, site_id=site, z_values=z_values, covariates=list(COVARIATES), treatment=TREATMENT_COLUMN,
+        outcome=OUTCOME_COLUMN, regime_col="F", on_value="on", idle_value="idle", predictor_kwargs=kwargs,
     )
     floor = bayes.NUMERICAL_PROBABILITY_FLOOR
     idle_xy = {}
@@ -2413,8 +2423,8 @@ def _simulate_site_rows(rows: pd.DataFrame, center: bayes.SitePMFDraw, rng: np.r
     p_x, p_y, p_do = _pmf_conditionals(center)
     if redraw_treatment:
         draw = rng.random(len(rows))
-        rows["iv"] = np.array([int(u < p_x[cell]) if ok else int(x) for u, cell, ok, x in zip(draw, z, fitted, rows.iv)])
-    x = rows.iv.astype(int).to_numpy()
+        rows[TREATMENT_COLUMN] = np.array([int(u < p_x[cell]) if ok else int(x) for u, cell, ok, x in zip(draw, z, fitted, rows[TREATMENT_COLUMN])])
+    x = rows[TREATMENT_COLUMN].astype(int).to_numpy()
     on = rows.F.eq("on").to_numpy()
     idle_ids = set(rows.loc[~on, "id"])
     in_idle = np.array([is_on and unit in idle_ids for is_on, unit in zip(on, rows["id"])])
@@ -2436,7 +2446,7 @@ def _simulate_site_rows(rows: pd.DataFrame, center: bayes.SitePMFDraw, rng: np.r
         by_unit = dict(zip(rows.loc[on, "id"], outcome[on]))
         nested = ~on & rows["id"].isin(by_unit).to_numpy()
         outcome[nested] = rows.loc[nested, "id"].map(by_unit).to_numpy()
-    rows["dv_binary"] = outcome
+    rows[OUTCOME_COLUMN] = outcome
     return rows
 
 
@@ -2446,8 +2456,8 @@ def _site_frames(rows: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, tuple,
     on = rows.loc[rows.F.eq("on")].reset_index(drop=True)
     idle = rows.loc[rows.F.eq("idle")].reset_index(drop=True)
     covariates = list(COVARIATES)
-    overlap = bayes._validate_overlap(on, idle, id_col="id", columns=["iv", "dv_binary", *covariates]) if len(on) else False
-    return on, idle, bayes._idle_support(idle, covariates, "iv"), overlap
+    overlap = bayes._validate_overlap(on, idle, id_col="id", columns=[TREATMENT_COLUMN, OUTCOME_COLUMN, *covariates]) if len(on) else False
+    return on, idle, bayes._idle_support(idle, covariates, TREATMENT_COLUMN), overlap
 
 
 def predictive_pmfs(
@@ -2493,7 +2503,7 @@ def predictive_pmfs(
     def draw(site, index):
         """Return one predictive draw of one site."""
 
-        rng = np.random.default_rng(bayes._stable_seed(seed, site, index))
+        rng = np.random.default_rng(sha256_seed(seed, site, index))
         simulated = _simulate_site_rows(sites[site], centers[site], rng, redraw_treatment=site == TARGET_SITE)
         _, _, support, overlap = frames[site]
         sim_on = simulated.loc[simulated.F.eq("on")].reset_index(drop=True)
@@ -2576,10 +2586,10 @@ def adopt_pmfs(
 
     output_dir, source_root = Path(output_dir), Path(source_root)
     target, source = read_pmf_identity(output_dir), read_pmf_identity(source_root)
-    for field in ("module_a", "module_a_scheme", "n_source_draws", "n_target_draws", "target_site", "covariates",
-                  "dependencies"):
-        if target.get(field) != source.get(field):
-            raise ValueError(f"The PMF roots differ in {field!r}; their draws are not interchangeable")
+    for key in ("module_a", "module_a_scheme", "n_source_draws", "n_target_draws", "target_site", "covariates",
+                "dependencies"):
+        if target.get(key) != source.get(key):
+            raise ValueError(f"The PMF roots differ in {key!r}; their draws are not interchangeable")
     fingerprints = _recorded_source_fingerprints(output_dir)
     source_fingerprints = _recorded_source_fingerprints(source_root)
     changed = [path for path in MODULE_A_SOURCES
@@ -5246,12 +5256,12 @@ def width_by_beta_table(
         and ``n_conditions`` (those with a finite width).
     """
 
-    from experiments.exp25_bootstrap_analysis import (
+    from experiments.hit_ratio_metrics import (
         DEFAULT_BOOTSTRAP_REPLICATES,
         DEFAULT_BOOTSTRAP_SEED,
         DEFAULT_CONFIDENCE_LEVEL,
-        _percentile_interval,
     )
+    from experiments.interval_stats import percentile_interval
 
     keys = ["study", "pattern", "beta"] if by_pattern else ["study", "beta"]
     posterior = ["naturalness_width_posterior_lower", "naturalness_width_posterior_upper"]
@@ -5279,7 +5289,7 @@ def width_by_beta_table(
             lower = upper = np.nan
             if means.size:
                 sampled = rng.integers(0, means.size, size=(DEFAULT_BOOTSTRAP_REPLICATES, means.size))
-                lower, upper = _percentile_interval(means[sampled].mean(axis=1), DEFAULT_CONFIDENCE_LEVEL)
+                lower, upper = percentile_interval(means[sampled].mean(axis=1), DEFAULT_CONFIDENCE_LEVEL)
             rows.append({
                 **dict(zip(keys, values)),
                 "method": method,

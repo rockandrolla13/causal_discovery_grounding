@@ -1,0 +1,8 @@
+beta,endpoint_calibration_performed,fit_gp,lp_intervention_diagnostics_computed,lp_probability_backend,pattern,policy_tuning_performed,rct_min_arm_count,rct_scoreable,role,site,stage1_backend,study,target_policy_confidence_level,target_policy_uncertainty,target_site,target_trigger_probability_backend
+1,True,True,True,hierarchical_dirichlet_draws,p,False,5,True,proper_training,s02,hierarchical_dirichlet,s,0.95,posterior_mean,pi,hierarchical_dirichlet
+1,True,True,True,hierarchical_dirichlet_draws,p,False,5,True,proper_training,s03,hierarchical_dirichlet,s,0.95,posterior_mean,pi,hierarchical_dirichlet
+1,True,True,True,hierarchical_dirichlet_draws,p,False,5,True,policy_tuning,s00,hierarchical_dirichlet,s,0.95,posterior_mean,pi,hierarchical_dirichlet
+1,True,True,True,hierarchical_dirichlet_draws,p,False,5,True,policy_tuning,s04,hierarchical_dirichlet,s,0.95,posterior_mean,pi,hierarchical_dirichlet
+1,True,True,True,hierarchical_dirichlet_draws,p,False,5,True,policy_tuning,s06,hierarchical_dirichlet,s,0.95,posterior_mean,pi,hierarchical_dirichlet
+1,True,True,True,hierarchical_dirichlet_draws,p,False,5,True,endpoint_calibration,s01,hierarchical_dirichlet,s,0.95,posterior_mean,pi,hierarchical_dirichlet
+1,True,True,True,hierarchical_dirichlet_draws,p,False,5,True,endpoint_calibration,s05,hierarchical_dirichlet,s,0.95,posterior_mean,pi,hierarchical_dirichlet

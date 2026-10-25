@@ -38,63 +38,32 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT))
-
-from experiments.exp25_hit_ratio_analysis import SIGN_TABLE_MODELS as EXP25_TABLE_MODELS
-from experiments.exp25_hit_ratio_plots import (
-    MODEL_COLORS as EXP25_MODEL_COLORS,
+from experiments.hit_ratio_metrics import SIGN_TABLE_MODELS as EXP25_TABLE_MODELS
+from experiments.method_styles import (
+    EXP25_MODEL_FOR_METHOD,
+    METHOD_COLORS,
+    METHOD_MARKERS,
+    METHOD_ORDER,
     MODEL_LABELS as EXP25_MODEL_LABELS,
     PAPER_FIGURE_WIDTH,
     PAPER_RC,
 )
 from experiments.naturalness_comparison import (
-    MANSKI_CAPPED_METHODS,
     METHOD_LABELS as RUNNER_METHOD_LABELS,
     condition_covariates,
     rescore_with_manski_cap,
 )
 from experiments.naturalness_plotting import make_method_metric_by_beta_plot
-from experiments.utils import render_latex_table
+from experiments.latex_tables import render_latex_table
 
 
 LOGGER = logging.getLogger(__name__)
-
-#: Drawing order. Manski first because it is the reference rather than a rival.
-METHOD_ORDER = ("manski", "naturalness", "balke_pearl", "blearner_exp_beta",
-                "blearner_oracle", "cb_pi", "cb_ra", "cb_ipw", "cb_dr")
-
-#: Exp25 analysis model each roster method is drawn as, for shared colours and
-#: labels; ``blearner_oracle`` takes Gamma from the declared latent propensity.
-EXP25_MODEL_FOR_METHOD = {
-    "manski": "manski",
-    "naturalness": "naturalness",
-    "balke_pearl": "balke_pearl",
-    "blearner_exp_beta": "blearner[exp_beta]",
-    "blearner_oracle": "blearner[dgp_oracle]",
-    "cb_ipw": "cb_ipw",
-    "cb_dr": "cb_dr",
-}
 
 #: Display labels, Exp25's where Exp25 draws the arm. Set here, not in the
 #: runner, because the runner's source is part of its resume fingerprint.
 METHOD_LABELS = {
     **RUNNER_METHOD_LABELS,
     **{method: EXP25_MODEL_LABELS[model] for method, model in EXP25_MODEL_FOR_METHOD.items()},
-}
-
-#: Colours from the Exp25 palette; ``cb_pi`` and ``cb_ra`` have their own so a
-#: run that requests them through ``--meta-learners`` is still drawn.
-METHOD_COLORS = {
-    "cb_pi": "#0e7490",
-    "cb_ra": "#15803d",
-    **{method: EXP25_MODEL_COLORS[model] for method, model in EXP25_MODEL_FOR_METHOD.items()},
-}
-
-METHOD_MARKERS = {
-    "manski": "_", "naturalness": "o", "balke_pearl": "P",
-    "blearner_exp_beta": "s", "blearner_oracle": "D",
-    "cb_pi": "^", "cb_ra": "v", "cb_ipw": "<", "cb_dr": ">",
 }
 
 #: Exp28 methods in the optimal-draw figures. The ``exp(beta)`` B-Learner is

@@ -17,9 +17,10 @@ models are based on Ricardo's learn_xgb and XGBoostBackdoorModel implementations
 import numpy as np
 import pandas as pd
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
+from typing import List, Dict, Any, Iterator, Optional, Tuple, Union
 import warnings
 
 # XGBoost is optional
@@ -93,6 +94,37 @@ def _make_binary_log_loss_scorer() -> Any:
         greater_is_better=False,
         labels=[0, 1],
     )
+
+
+#: ``(category, message regex)`` of the warnings an XGBoost fit or its grid search
+#: raises on small or imbalanced sites. scikit-learn's cross-validation emits them
+#: when a fold misses a class. ``FitFailedWarning`` is added at call time because
+#: scikit-learn is optional at import.
+_EXPECTED_XGBOOST_FIT_WARNINGS: Tuple[Tuple[type, str], ...] = (
+    (UserWarning, r"The least populated class in y has only \d+ members"),
+    (UserWarning, r"One or more of the (test|train) scores are non-finite"),
+)
+
+
+@contextmanager
+def _expected_xgboost_fit_warnings_ignored() -> Iterator[None]:
+    """Silence the known cross-validation warnings of an XGBoost fit.
+
+    Other warnings still reach the caller.
+
+    Yields:
+        None, inside a ``warnings.catch_warnings`` block.
+    """
+    with warnings.catch_warnings():
+        for category, message in _EXPECTED_XGBOOST_FIT_WARNINGS:
+            warnings.filterwarnings("ignore", message=message, category=category)
+        try:
+            from sklearn.exceptions import FitFailedWarning
+        except ImportError:  # pragma: no cover - scikit-learn is a core dependency
+            pass
+        else:
+            warnings.filterwarnings("ignore", category=FitFailedWarning)
+        yield
 
 
 class BasePredictorModel(ABC):
@@ -1299,8 +1331,7 @@ class XGBoostPredictor(BasePredictorModel):
 
             base_model = xgb.XGBClassifier(**base_params)
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with _expected_xgboost_fit_warnings_ignored():
                 grid_search = GridSearchCV(
                     base_model,
                     param_grid,
@@ -1319,8 +1350,7 @@ class XGBoostPredictor(BasePredictorModel):
                 **base_params
             )
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with _expected_xgboost_fit_warnings_ignored():
                 model.fit(X, y)
 
             return model
@@ -1390,8 +1420,7 @@ class XGBoostPredictor(BasePredictorModel):
 
             base_model = xgb.XGBRegressor(**base_params)
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with _expected_xgboost_fit_warnings_ignored():
                 grid_search = GridSearchCV(
                     base_model,
                     param_grid,
@@ -1410,8 +1439,7 @@ class XGBoostPredictor(BasePredictorModel):
                 **base_params
             )
 
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with _expected_xgboost_fit_warnings_ignored():
                 model.fit(X, y)
 
             return model
@@ -1508,10 +1536,34 @@ class _ConstantBinaryClassifier:
         return np.column_stack([1.0 - p1, p1])
 
 
-#: Loaded TabICL checkpoints shared by every ``share_checkpoint`` classifier in
-#: this process, keyed by ``(model_path, checkpoint_version)``.
-_SHARED_TABICL_MODELS: Dict[Tuple[str, str], Tuple[Any, Any, Any]] = {}
-_SHARED_CHECKPOINT_CLASSES: Dict[Any, Any] = {}
+class _SharedTabICLCheckpointCache:
+    """Process-wide cache behind ``share_checkpoint`` TabICL classifiers.
+
+    Attributes:
+        models: Loaded ``(model_path_, model_, model_config_)`` triples, keyed by
+            ``(model_path, checkpoint_version)``.
+        classifier_classes: Shared-checkpoint subclass of each TabICL classifier
+            class.
+    """
+
+    def __init__(self) -> None:
+        """Start with empty caches."""
+        self.models: Dict[Tuple[str, str], Tuple[Any, Any, Any]] = {}
+        self.classifier_classes: Dict[Any, Any] = {}
+
+    def clear(self) -> None:
+        """Drop every loaded checkpoint and subclass, in place.
+
+        Classifiers fitted later load their checkpoint again.
+        """
+        self.models.clear()
+        self.classifier_classes.clear()
+
+
+_SHARED_TABICL_CHECKPOINTS = _SharedTabICLCheckpointCache()
+# Names kept for existing callers; they are the cache's own dictionaries.
+_SHARED_TABICL_MODELS = _SHARED_TABICL_CHECKPOINTS.models
+_SHARED_CHECKPOINT_CLASSES = _SHARED_TABICL_CHECKPOINTS.classifier_classes
 
 
 def _shared_checkpoint_classifier(classifier_class: Any) -> Any:
@@ -1532,7 +1584,7 @@ def _shared_checkpoint_classifier(classifier_class: Any) -> Any:
     Returns:
         The cached subclass whose ``_load_model`` reuses a process-wide model.
     """
-    cached = _SHARED_CHECKPOINT_CLASSES.get(classifier_class)
+    cached = _SHARED_TABICL_CHECKPOINTS.classifier_classes.get(classifier_class)
     if cached is not None:
         return cached
 
@@ -1542,15 +1594,15 @@ def _shared_checkpoint_classifier(classifier_class: Any) -> Any:
         def _load_model(self) -> None:
             """Reuse the process-wide model for this checkpoint, loading it once."""
             key = (str(self.model_path), str(self.checkpoint_version))
-            shared = _SHARED_TABICL_MODELS.get(key)
+            shared = _SHARED_TABICL_CHECKPOINTS.models.get(key)
             if shared is None:
                 super()._load_model()
-                _SHARED_TABICL_MODELS[key] = (self.model_path_, self.model_, self.model_config_)
+                _SHARED_TABICL_CHECKPOINTS.models[key] = (self.model_path_, self.model_, self.model_config_)
             else:
                 self.model_path_, self.model_, self.model_config_ = shared
 
     SharedCheckpointTabICLClassifier.__name__ = f"SharedCheckpoint{getattr(classifier_class, '__name__', 'TabICL')}"
-    _SHARED_CHECKPOINT_CLASSES[classifier_class] = SharedCheckpointTabICLClassifier
+    _SHARED_TABICL_CHECKPOINTS.classifier_classes[classifier_class] = SharedCheckpointTabICLClassifier
     return SharedCheckpointTabICLClassifier
 
 
@@ -1925,8 +1977,11 @@ def create_predictor(
     """
     Factory function to create predictor.
 
+    The backend names and their factories come from
+    :mod:`causal_grounding.probability_backends`.
+
     Args:
-        method: Predictor backend name.
+        method: Registered predictor backend name.
         **kwargs: Arguments passed to predictor constructor
 
     Returns:
@@ -1939,90 +1994,36 @@ def create_predictor(
         predictor = create_predictor('hierarchical_dirichlet_draws')
         predictor = create_predictor('tabicl_v2', device='cuda')
     """
-    if method == 'empirical':
-        return EmpiricalPredictor(**kwargs)
-    elif method in {
-        'hierarchical_dirichlet',
-        'hierarchical_dirichlet_draws',
-        'hierarchical_dirichlet_posterior',
-        'dirichlet_posterior',
-    }:
-        return HierarchicalDirichletPredictor(**kwargs)
-    elif method == 'xgboost':
-        if not _XGBOOST_AVAILABLE:
-            raise ImportError(
-                "XGBoost not available. Install with: pip install xgboost"
-            )
-        return XGBoostPredictor(**kwargs)
-    elif method == 'tabicl_v2':
-        return TabICLv2Predictor(**kwargs)
-    else:
-        raise ValueError(
-            f"Unknown method: {method}. Use 'empirical', 'xgboost', "
-            "'hierarchical_dirichlet', 'hierarchical_dirichlet_draws', or "
-            "'tabicl_v2'."
+    from .probability_backends import (
+        get_probability_backend,
+        probability_backend_names,
+    )
+
+    try:
+        factory = get_probability_backend(method).predictor_factory
+    except KeyError:
+        factory = None
+    if factory is None:
+        available = ", ".join(repr(name) for name in probability_backend_names(predictor=True))
+        raise ValueError(f"Unknown method: {method}. Use one of {available}.")
+    return factory(**kwargs)
+
+
+def _create_xgboost_predictor(**kwargs: Any) -> 'XGBoostPredictor':
+    """Create an :class:`XGBoostPredictor`, failing early when XGBoost is missing.
+
+    Args:
+        **kwargs: Arguments passed to the ``XGBoostPredictor`` constructor.
+
+    Returns:
+        The new predictor.
+
+    Raises:
+        ImportError: If XGBoost is not installed.
+    """
+    if not _XGBOOST_AVAILABLE:
+        raise ImportError(
+            "XGBoost not available. Install with: pip install xgboost"
         )
+    return XGBoostPredictor(**kwargs)
 
-
-# Module test
-if __name__ == "__main__":
-    print("Prediction Models Test")
-    print("=" * 50)
-
-    # Create test data
-    np.random.seed(42)
-    n = 500
-
-    # Simple DGP: Z -> X -> Y
-    Z = np.random.binomial(1, 0.5, n)
-    X = np.random.binomial(1, 0.3 + 0.4 * Z, n)
-    Y = np.random.binomial(1, 0.3 + 0.3 * X, n)
-
-    df = pd.DataFrame({'Z': Z, 'X': X, 'Y': Y})
-
-    print("\n1. Testing EmpiricalPredictor...")
-    emp = EmpiricalPredictor()
-    emp.fit(df, treatment='X', outcome='Y', covariates=['Z'])
-
-    prop = emp.predict_propensity(df[['Z']])
-    print(f"   Propensity range: [{prop.min():.3f}, {prop.max():.3f}]")
-
-    y0 = emp.predict_outcome(df[['Z']], 0)
-    y1 = emp.predict_outcome(df[['Z']], 1)
-    print(f"   Y(0) range: [{y0.min():.3f}, {y0.max():.3f}]")
-    print(f"   Y(1) range: [{y1.min():.3f}, {y1.max():.3f}]")
-
-    cate = emp.predict_cate(df[['Z']])
-    print(f"   CATE range: [{cate.min():.3f}, {cate.max():.3f}]")
-
-    if _XGBOOST_AVAILABLE:
-        print("\n2. Testing XGBoostPredictor...")
-        xgb_pred = XGBoostPredictor(use_grid_search=False, random_state=42)
-        xgb_pred.fit(df, treatment='X', outcome='Y', covariates=['Z'])
-
-        prop = xgb_pred.predict_propensity(df[['Z']])
-        print(f"   Propensity range: [{prop.min():.3f}, {prop.max():.3f}]")
-
-        y0 = xgb_pred.predict_outcome(df[['Z']], 0)
-        y1 = xgb_pred.predict_outcome(df[['Z']], 1)
-        print(f"   Y(0) range: [{y0.min():.3f}, {y0.max():.3f}]")
-        print(f"   Y(1) range: [{y1.min():.3f}, {y1.max():.3f}]")
-
-        cate = xgb_pred.predict_cate(df[['Z']])
-        print(f"   CATE range: [{cate.min():.3f}, {cate.max():.3f}]")
-
-        print("\n   Feature importance (outcome):")
-        importance = xgb_pred.get_feature_importance('outcome')
-        print(importance)
-    else:
-        print("\n2. XGBoost not available, skipping...")
-
-    print("\n3. Testing factory function...")
-    emp = create_predictor('empirical')
-    print(f"   Empirical: {type(emp).__name__}")
-
-    if _XGBOOST_AVAILABLE:
-        xgb = create_predictor('xgboost', use_grid_search=False)
-        print(f"   XGBoost: {type(xgb).__name__}")
-
-    print("\nAll tests completed!")

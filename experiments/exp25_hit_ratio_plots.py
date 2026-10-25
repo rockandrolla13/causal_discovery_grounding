@@ -5,8 +5,8 @@ into ``<output_dir>/figures``: the correct-sign rate against decisiveness, where
 B-Learner Gamma rule lands, the five sign-verdict cells and their cross-tabulation, the
 width-containment frontiers, the rates against beta, the paired hit concordance with
 Naturalness and the spread across replications. :func:`make_mechanism_arm_plots` draws
-the mechanism-arm (ablation) figures. The command line runs the full analysis
-(:func:`experiments.exp25_hit_ratio_analysis.run_analysis`) on one backend leaf.
+the mechanism-arm (ablation) figures. To render the figure set from the command line,
+run the full analysis: ``python -m experiments.exp25_hit_ratio_analysis <leaf>``.
 
 Nothing here is calibrated to a containment guarantee: the abstention axis is
 ``decisiveness_rate``, not coverage, and the hit ratio is containment of a noisy point
@@ -18,7 +18,6 @@ and ``paper/reproduce_ablations.sh`` draw the paper's figures through this modul
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -34,24 +33,33 @@ from matplotlib.patches import Patch
 from matplotlib.ticker import MaxNLocator, PercentFormatter
 from scipy.stats import binomtest
 
-from experiments.exp25_hit_ratio_analysis import (
+from causal_grounding.paper_grids import PAPER_BETAS
+from experiments.hit_ratio_metrics import (
     EXP25_KEY_COLUMNS,
     MODEL_ORDER,
     SIGN_ORDER,
     _frontier_bootstrap_intervals,
     common_support_frontier,
-    run_analysis,
 )
-from experiments.interval_stats import WILSON_Z, wilson_interval  # noqa: F401  (re-exported)
+from experiments.interval_stats import wilson_interval
+# Method styles, re-exported so they stay importable from here.
+from experiments.method_styles import (  # noqa: F401
+    BETA_SYMBOL,
+    FALLBACK_COLORS,
+    FALLBACK_MARKERS,
+    GAMMA_SYMBOL,
+    MODEL_COLORS,
+    MODEL_LABELS,
+    MODEL_MARKERS,
+    MODEL_SHORT_LABELS,
+    PAPER_FIGURE_WIDTH,
+    PAPER_RC,
+)
 
 
 NATURALNESS_MODEL = "naturalness"
-# Matplotlib mathtext symbols (no LaTeX needed), held as constants so f-strings that
-# also contain escapes such as a newline can interpolate them.
-BETA_SYMBOL = r"$\beta$"
 # Mathtext ignores ``fontweight``, so a bold header needs a bold glyph.
 BOLD_BETA_SYMBOL = r"$\boldsymbol{\beta}$"
-GAMMA_SYMBOL = r"$\Gamma$"
 BLEARNER_MODEL_PREFIX = "blearner["
 # Leaf-label prefix (``benchmarks.gamma_output_label``) of a numeric Gamma on the swept
 # sensitivity grid, as opposed to a named rule such as ``oracle``.
@@ -73,7 +81,7 @@ FRONTIER_SD_COLUMNS = ("mean_width_sd", "hit_ratio_sd")
 FRONTIER_SPREAD_SUFFIXES = {"ci": "", "sd": "_sd"}
 # Confounding levels drawn in the per-study frontier, when present; below them
 # Naturalness lies outside the swept Gamma grid, so no matched comparison exists.
-STUDY_FRONTIER_BETAS = (0.5, 1.0, 1.5, 2.0)
+STUDY_FRONTIER_BETAS = PAPER_BETAS
 # Vector output by default: the panels are sharp at any zoom and in print.
 DEFAULT_PLOT_FORMATS = ("pdf",)
 # Resolution for raster output, and for the raster parts embedded in vector
@@ -82,61 +90,6 @@ RASTER_PLOT_DPI = 220
 VECTOR_RASTER_DPI = 600
 VECTOR_PLOT_FORMATS = frozenset({"pdf", "svg", "eps", "ps"})
 FIGURES_DIRNAME = "figures"
-MODEL_LABELS = {
-    "naturalness": "Naturalness",
-    "blearner[dgp_oracle]": f"B-Learner ({GAMMA_SYMBOL} dgp-oracle)",
-    "blearner[oracle]": f"B-Learner ({GAMMA_SYMBOL} oracle)",
-    "blearner[exp_beta]": f"B-Learner ({GAMMA_SYMBOL} exp-{BETA_SYMBOL})",
-    "cb_ipw": "CB-IPW",
-    "cb_dr": "CB-DR",
-    "balke_pearl": "Balke-Pearl",
-    "manski": "Manski",
-    "transport": "Transport",
-}
-MODEL_SHORT_LABELS = {
-    "naturalness": "Nat",
-    "blearner[dgp_oracle]": "BL dgp",
-    "blearner[oracle]": "BL orc",
-    "blearner[exp_beta]": "BL exp",
-    "cb_ipw": "IPW",
-    "cb_dr": "DR",
-    "balke_pearl": "BP",
-    "manski": "Manski",
-    "transport": "Trans",
-}
-MODEL_COLORS = {
-    "naturalness": "tab:purple",
-    "blearner[dgp_oracle]": "tab:red",
-    "blearner[oracle]": "#7f1d1d",
-    "blearner[exp_beta]": "#f4977a",
-    "cb_ipw": "tab:blue",
-    "cb_dr": "tab:green",
-    # Exp28 draws Balke-Pearl violet, too close to Naturalness here.
-    "balke_pearl": "tab:orange",
-    "manski": "#64748b",
-    # Colour-blind distinguishable from Naturalness and Balke-Pearl (worst pairwise Delta E 14.4).
-    "transport": "tab:cyan",
-}
-MODEL_MARKERS = {
-    "naturalness": "o",
-    "blearner[dgp_oracle]": "s",
-    "blearner[oracle]": "D",
-    "blearner[exp_beta]": "^",
-    "cb_ipw": "v",
-    "cb_dr": "P",
-    "balke_pearl": "X",
-    "manski": "d",
-    "transport": "h",
-}
-FALLBACK_MARKERS = ("o", "s", "D", "^", "v", "P", "X", "*")
-FALLBACK_COLORS = (
-    "tab:orange",
-    "tab:brown",
-    "tab:olive",
-    "tab:cyan",
-    "tab:pink",
-    "0.45",
-)
 PAIR_OUTCOME_ORDER = (
     "both_hit",
     "naturalness_only",
@@ -202,20 +155,6 @@ SHARED_AXIS_LABEL_FONTSIZE = 16
 FRONTIER_HEADER_FONTSIZE = 14
 # Legend text of the report's frontier figures.
 FRONTIER_LEGEND_TEXT_STYLE = {"size": 13, "weight": "bold"}
-# Manuscript figures are drawn at the printed width (inches) with PAPER_RC's print-sized
-# TrueType fonts, so LaTeX includes them at about natural size.
-PAPER_FIGURE_WIDTH = 6.5
-PAPER_RC = {
-    "font.size": 9.0,
-    "axes.titlesize": 9.0,
-    "axes.labelsize": 9.0,
-    "figure.labelsize": 10.0,
-    "xtick.labelsize": 8.0,
-    "ytick.labelsize": 8.0,
-    "legend.fontsize": 8.0,
-    "pdf.fonttype": 42,
-    "ps.fonttype": 42,
-}
 # Marker area (points squared) of a method in the manuscript's frontier figures.
 PAPER_MARKER_AREA = 36.0
 # Sign-verdict panels read best with the RCT verdict on rows and a fixed order.
@@ -2402,43 +2341,3 @@ def make_mechanism_arm_plots(
                 strata, output_dir, arm=arm, grounding=grounding, by_study=by_study,
                 plot_formats=plot_formats, bootstrap_replicates=bootstrap_replicates)
     return paths
-
-
-def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    """Parse command-line arguments for standalone Exp25 figure rendering."""
-
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "primary_leaf",
-        help="Exp25 backend leaf containing the primary mc_intervals.parquet",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default=None,
-        help="Destination for tables and figures (default: <leaf>/analysis)",
-    )
-    parser.add_argument(
-        "--plot-formats",
-        nargs="+",
-        default=list(DEFAULT_PLOT_FORMATS),
-        help="Matplotlib output extensions, for example pdf png (default: pdf)",
-    )
-    return parser.parse_args(argv)
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Render the Exp25 figure set from the command line."""
-
-    args = parse_args(argv)
-    result = run_analysis(
-        args.primary_leaf,
-        args.output_dir,
-        plot_formats=args.plot_formats,
-    )
-    print(f"Exp25 figures: {Path(result['output_dir']) / FIGURES_DIRNAME}")
-    print(f"Figure files: {len(result['figure_paths'])}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

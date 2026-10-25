@@ -1,7 +1,7 @@
 """
 OSRCT / ManyLabs loader — reads a confounded-dataset CSV and splits it by site.
 
-Supersedes ``experiments/osrct_data_utils.py:133`` ``load_prepared_data``. The
+Supersedes ``experiments.osrct_data_utils.load_prepared_data``. The
 acceptance test is
 ``tests/test_experiments/test_loader_characterisation_osrct.py``.
 
@@ -28,7 +28,20 @@ import numpy as np
 import pandas as pd
 
 from .contract import RawDataset, SiteBundle, SiteTable
-from .covariates import DEFAULT_AGE_BINARY_THRESHOLD, derive_age_bin
+from .schema import (
+    MANYLABS_COVARIATES,
+    OUTCOME_COLUMN,
+    SITE_COLUMN,
+    SOURCE_OUTCOME_COLUMN,
+    TREATMENT_COLUMN,
+    UNIT_ID_COLUMN,
+)
+from .covariates import (  # noqa: F401  DEFAULT_POLIDEO_BINARY_THRESHOLD re-exported
+    DEFAULT_AGE_BINARY_THRESHOLD,
+    DEFAULT_POLIDEO_BINARY_THRESHOLD,
+    derive_age_bin,
+    derive_polideo_bin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,26 +50,18 @@ SUPPORTED_STUDIES: FrozenSet[str] = frozenset(
     {"gainloss", "reciprocity", "allowedforbidden"}
 )
 
-TREATMENT = "iv"
-SOURCE_OUTCOME = "dv"
-OUTCOME = "dv_binary"
-UNIT_ID = "id"
-SITE = "site"
+# Short aliases of the schema constants, kept for existing importers.
+TREATMENT = TREATMENT_COLUMN
+SOURCE_OUTCOME = SOURCE_OUTCOME_COLUMN
+OUTCOME = OUTCOME_COLUMN
+UNIT_ID = UNIT_ID_COLUMN
+SITE = SITE_COLUMN
 
-# Single source of truth. Previously written three times — as
-# OSRCTConfig.covariates (never read), as USEFUL_COVARIATES in
-# experiments/utils.py, and implicitly in the derivation. See AR-DRY-012.
-COVARIATES: Tuple[str, ...] = (
-    "resp_age_bin",
-    "resp_gender_bin",
-    "resp_polideo_bin",
-)
+# Single source of truth lives in loaders/schema.py. See AR-DRY-012/102.
+COVARIATES: Tuple[str, ...] = MANYLABS_COVARIATES
 
-# Fixed, not configurable, from discretize.py:52-54.
+# Fixed, not configurable, from causal_grounding.discretize.discretize_polideo.
 POLIDEO_BIN_EDGES: Tuple[float, ...] = (-0.1, 2.5, 3.5, 6.1)
-
-# Mirrors experiments/utils.py:47. The age threshold lives in .covariates.
-DEFAULT_POLIDEO_BINARY_THRESHOLD = 3.0
 
 
 class OSRCTLoader:
@@ -104,7 +109,7 @@ class OSRCTLoader:
         """Read the confounded dataset.
 
         The old dispatch fell through to ``read_csv`` for *any* unrecognised
-        suffix (``osrct_data_utils.py:139-144``). ``RawDataset.format`` is a
+        suffix (``experiments.osrct_data_utils.load_prepared_data``). ``RawDataset.format`` is a
         closed ``Literal`` precisely so that an unexpected extension is an error
         rather than a guess.
         """
@@ -122,7 +127,7 @@ class OSRCTLoader:
     def _apply_cohort_filter(self, raw: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
         """Optionally drop rows whose pre-imputation gender is missing.
 
-        Off by default, matching ``osrct_data_utils.py:70``. It keys on
+        Off by default, matching ``OSRCTConfig.require_observed_gender``. It keys on
         ``resp_sex`` rather than ``resp_gender`` because ManyLabs preprocessing
         overwrites missing ``resp_gender`` with site means, so only ``resp_sex``
         still carries the missingness.
@@ -153,11 +158,11 @@ class OSRCTLoader:
         """Binarise the outcome and derive the three binary covariates.
 
         Binarisation pools values, requires exactly two distinct, and takes the
-        larger as positive (``experiments/utils.py:122-145``). For gainloss that
+        larger as positive (``experiments.covariate_preparation.add_naturalness_columns``). For gainloss that
         makes ``2.0`` the positive value.
 
         Warning:
-            ``experiments/utils.py:153`` casts ``resp_gender`` with
+            ``experiments.covariate_preparation.add_naturalness_columns`` casts ``resp_gender`` with
             ``.astype(int)``, which **truncates**. Five gainloss rows carry
             site-mean imputed values (0.6479 x3, 0.7236, 0.8188) and all five
             become 0 — every one of them is above 0.5, so rounding would flip
@@ -173,7 +178,7 @@ class OSRCTLoader:
         Note:
             **``resp_age_cat`` is deliberately not produced here.** The old code
             builds it with ``pd.qcut`` over the *concatenated* OSRCT and RCT
-            ages (``utils.py:133-141``), so it cannot be computed from one file.
+            ages (``experiments.covariate_preparation.add_naturalness_columns``), so it cannot be computed from one file.
             It is not one of the three declared covariates, so nothing in the
             grounder's covariate path needs it.
 
@@ -208,10 +213,9 @@ class OSRCTLoader:
         result["resp_age_bin"] = derive_age_bin(
             result["resp_age"], self.age_threshold
         )
-        result["resp_polideo_bin"] = (
-            pd.to_numeric(result["resp_polideo"], errors="coerce")
-            > self.polideo_threshold
-        ).astype(int)
+        result["resp_polideo_bin"] = derive_polideo_bin(
+            result["resp_polideo"], self.polideo_threshold
+        )
 
         self._positive_value = float(positive_value)
         return result

@@ -35,6 +35,7 @@ from scipy import linalg
 from scipy.spatial import Delaunay, QhullError
 from scipy.special import logsumexp, ndtr, ndtri
 
+from .loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from .lp_solver_learned_naturalness import (
     TargetObservedBinaryQuantities,
     estimate_target_observed_binary_quantities,
@@ -42,14 +43,15 @@ from .lp_solver_learned_naturalness import (
     solve_target_weighted_cate_bounds_from_observed_binary_quantities,
 )
 from .naturalness_statistics import as_tuple, safe_sorted
+from .paper_grids import EPSILON_GRID as DEFAULT_EPSILONS
+from .paper_grids import TAU_GRID as DEFAULT_TAUS
+from .seeding import sha256_seed
 
 
 LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_COVARIATES = ("z_clean", "z_bad")
-DEFAULT_EPSILONS = (0.01, 0.025, 0.05, 0.075, 0.10, 0.15, 0.20, 0.50)
-DEFAULT_TAUS = (0.01, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30)
 NUMERICAL_PROBABILITY_FLOOR = 1e-6
 # Nugget nu of the Gaussian-copula latent correlation, R = (1 - nu) K + nu I.
 # R keeps a unit diagonal, so every tolerance margin stays Uniform(0, 1), and its
@@ -65,7 +67,6 @@ JAX_CACHE_CLEAR_INTERVAL = 20
 # Phi(N(mu, 1)) is located by the sites' evidence.
 MARGINAL_LOCATIONS = ("uniform", "learned")
 LEARNED_LOCATION_PRIOR_SD = 1.5
-_fits_since_jax_cache_clear = 0
 # Candidate-specific surfaces: tolerance kind, solver-scale evidence column and
 # GP inputs.  ``2c`` depends on the exclusion statistic only; ``2d`` also on
 # treatment relevance.
@@ -73,13 +74,6 @@ _SURFACE_SPECS = (
     ("c", "required_two_c", ("i_deviation",)),
     ("d", "required_two_d", ("i_deviation", "d_strength")),
 )
-
-
-def _stable_seed(*parts: Any) -> int:
-    """Derive a reproducible 32-bit seed from arbitrary identifiers."""
-
-    payload = "|".join(map(str, parts)).encode("utf-8")
-    return int.from_bytes(hashlib.sha256(payload).digest()[:4], "little")
 
 
 def _stable_sample_id(*parts: Any) -> str:
@@ -427,8 +421,8 @@ def draw_raw_pmfs(
     n_draws: int,
     alpha: float = 1.0,
     random_seed: int = 20260922,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
     site_col: str = "site",
     regime_col: str = "F",
@@ -484,7 +478,7 @@ def draw_raw_pmfs(
         imputation: RawPMFImputation = {}
         for site in sites:
             on, idle = frames[site]
-            rng = np.random.default_rng(_stable_seed(random_seed, alpha, draw_index, site))
+            rng = np.random.default_rng(sha256_seed(random_seed, alpha, draw_index, site))
             imputation[site] = _draw_site_pmf(
                 on,
                 idle,
@@ -577,8 +571,13 @@ def _tabicl_site_probabilities(
     on_value: str,
     idle_value: str,
     predictor_kwargs: Mapping[str, Any],
+    probability_backend: str = "tabicl_v2",
 ) -> tuple[dict, dict, dict]:
     """Fit the TabICLv2 Stage-1 models to one site's rows and read them on ``z_values``.
+
+    ``probability_backend`` names the registered backend
+    (:mod:`causal_grounding.probability_backends`) whose Stage-1 adapter and
+    target-LP path are fitted. The default is TabICLv2.
 
     A source site uses the grounder's
     :class:`~causal_grounding.naturalness_grounder.TabICLv2SitePMFModels`; a
@@ -596,17 +595,20 @@ def _tabicl_site_probabilities(
     if on.empty:
         quantities = estimate_target_observed_binary_quantities(
             idle, treatment, outcome, covariates, regime_col=None, min_count=1,
-            probability_backend="tabicl_v2", probability_model_kwargs=dict(predictor_kwargs),
+            probability_backend=probability_backend, probability_model_kwargs=dict(predictor_kwargs),
         )
         return (
             {z: float(quantities.p_x1[z]) for z in z_values},
             {(x, z): float(quantities.p_y1_given_xz[(x, z)]) for z in z_values for x in (0, 1)},
             {},
         )
-    # Imported here so the CPU sampling stages never load the predictor stack.
-    from .naturalness_grounder import TabICLv2SitePMFModels
+    # Resolved here, through the backend registry, so the CPU sampling stages
+    # never load the predictor stack.
+    from .probability_backends import get_probability_backend
 
-    model = TabICLv2SitePMFModels(
+    site_pmf_models = get_probability_backend(probability_backend).stage1_factory
+
+    model = site_pmf_models(
         site_id=site_id,
         data=pd.concat([on.assign(**{regime_col: on_value}), idle.assign(**{regime_col: idle_value})], ignore_index=True),
         covariates=covariates,
@@ -630,8 +632,8 @@ def draw_tabicl_bootstrap_pmfs(
     n_draws: int,
     random_seed: int,
     predictor_kwargs: Mapping[str, Any] | None = None,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
     site_col: str = "site",
     regime_col: str = "F",
@@ -712,7 +714,7 @@ def draw_tabicl_bootstrap_pmfs(
         for site in sites:
             on, idle = frames[site]
             z_values, n_idle_z, n_idle_xz = supports[site]
-            rng = np.random.default_rng(_stable_seed("tabicl-bootstrap", random_seed, draw_index, site))
+            rng = np.random.default_rng(sha256_seed("tabicl-bootstrap", random_seed, draw_index, site))
             boot_on, boot_idle = _bootstrap_site_rows(on, idle, covariates=covariates, id_col=id_col,
                                                       overlap=overlaps[site], rng=rng) if resample else (on, idle)
             p_x1, p_y1, p_do = _tabicl_site_probabilities(
@@ -792,7 +794,7 @@ def raw_pmf_draws_from_frame(
     frame: pd.DataFrame,
     data: pd.DataFrame,
     *,
-    treatment: str = "iv",
+    treatment: str = TREATMENT_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
     site_col: str = "site",
     regime_col: str = "F",
@@ -872,8 +874,8 @@ def raw_pmf_posterior_parameters(
     n_draws: int,
     alpha: float,
     random_seed: int,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
     site_col: str = "site",
     regime_col: str = "F",
@@ -997,8 +999,8 @@ def raw_pmf_posterior_parameters(
 def rows_from_raw_pmf_posterior_parameters(
     parameters: pd.DataFrame,
     *,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
 ) -> pd.DataFrame:
     """Rebuild rows whose raw-PMF posterior equals a stored parameter table.
@@ -1263,6 +1265,45 @@ def _surface_diagnostics(
     }
 
 
+class _PeriodicJaxCacheClearer:
+    """Count tolerance-surface fits and clear JAX's caches once per interval.
+
+    Attributes:
+        fits_since_clear: Fits since the last clear.
+    """
+
+    def __init__(self) -> None:
+        """Start a fresh count."""
+        self.fits_since_clear = 0
+
+    def reset(self) -> None:
+        """Restart the count without clearing JAX's caches."""
+        self.fits_since_clear = 0
+
+    def record_fit(self, jax: Any) -> None:
+        """Count one fit, and clear the caches when the count reaches the interval.
+
+        Args:
+            jax: The imported ``jax`` module.
+        """
+        self.fits_since_clear += 1
+        if self.fits_since_clear >= JAX_CACHE_CLEAR_INTERVAL:
+            jax.clear_caches()
+            self.fits_since_clear = 0
+            _malloc_trim()
+
+
+def _malloc_trim() -> None:
+    """Return freed heap to the operating system; a no-op outside glibc."""
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        LOGGER.debug("malloc_trim is unavailable; freed heap stays with the process")
+
+
+_JAX_CACHE_CLEARER = _PeriodicJaxCacheClearer()
+
+
 def _clear_jax_caches_periodically(jax: Any) -> None:
     """Drop JAX's compilation caches every ``JAX_CACHE_CLEAR_INTERVAL`` fits.
 
@@ -1277,15 +1318,7 @@ def _clear_jax_caches_periodically(jax: Any) -> None:
         jax: The imported ``jax`` module (the fitter imports JAX lazily).
     """
 
-    global _fits_since_jax_cache_clear
-    _fits_since_jax_cache_clear += 1
-    if _fits_since_jax_cache_clear >= JAX_CACHE_CLEAR_INTERVAL:
-        jax.clear_caches()
-        _fits_since_jax_cache_clear = 0
-        try:
-            ctypes.CDLL("libc.so.6").malloc_trim(0)
-        except (OSError, AttributeError):
-            pass
+    _JAX_CACHE_CLEARER.record_fit(jax)
 
 
 def _fit_one_surface_numpyro(
@@ -1489,7 +1522,7 @@ def fit_tolerance_surfaces(
                 raise ValueError(f"Candidate {candidate!r} has fewer than two {kind} evidence units")
             features = rows[list(feature_names)].to_numpy(dtype=float)
             omega = rows[omega_column].to_numpy(dtype=float)
-            seed = _stable_seed(random_seed, imputation_id, candidate, kind, "primary")
+            seed = sha256_seed(random_seed, imputation_id, candidate, kind, "primary")
             posterior = _fit_one_surface_numpyro(
                 candidate=str(candidate),
                 tolerance_kind=kind,
@@ -1513,7 +1546,7 @@ def fit_tolerance_surfaces(
                     features=features,
                     omega=omega,
                     imputation_id=imputation_id,
-                    random_seed=_stable_seed(random_seed, imputation_id, candidate, kind, "retry"),
+                    random_seed=sha256_seed(random_seed, imputation_id, candidate, kind, "retry"),
                     num_chains=num_chains,
                     num_warmup=retry_warmup,
                     num_samples=num_samples if retry_num_samples is None else retry_num_samples,
@@ -1530,7 +1563,7 @@ def fit_tolerance_surfaces(
                     features=features,
                     omega=omega,
                     imputation_id=imputation_id,
-                    random_seed=_stable_seed(random_seed, imputation_id, candidate, kind, "second_retry"),
+                    random_seed=sha256_seed(random_seed, imputation_id, candidate, kind, "second_retry"),
                     num_chains=num_chains,
                     num_warmup=int(second_retry["num_warmup"]),
                     num_samples=int(second_retry["num_samples"]),
@@ -1839,7 +1872,7 @@ def leave_one_source_out_scores(
         try:
             fitted = fit_tolerance_surfaces(
                 remaining,
-                random_seed=_stable_seed(random_seed, "leave-one-source-out", held_out),
+                random_seed=sha256_seed(random_seed, "leave-one-source-out", held_out),
                 unconverged=unconverged,
                 **fit_kwargs,
             )
@@ -1874,7 +1907,7 @@ def leave_one_source_out_scores(
                         query,
                         omega,
                         max_posterior_draws=max_posterior_draws,
-                        random_seed=_stable_seed(random_seed, "held-out-score", held_out, candidate, kind),
+                        random_seed=sha256_seed(random_seed, "held-out-score", held_out, candidate, kind),
                     ))
                     for key in ("passed", "attempt", "max_r_hat", "min_bulk_ess", "min_tail_ess", "n_divergent"):
                         record[f"refit_{key}"] = posterior.diagnostics.get(key)
@@ -1885,7 +1918,7 @@ def leave_one_source_out_scores(
                                 posterior,
                                 target,
                                 max_posterior_draws=max_posterior_draws,
-                                random_seed=_stable_seed(random_seed, "target-query", held_out, candidate, kind),
+                                random_seed=sha256_seed(random_seed, "target-query", held_out, candidate, kind),
                             )
                             record["target_predictive_q50"] = float(predictive.tolerance.median())
                             record["target_in_source_support"] = bool(
@@ -2162,14 +2195,14 @@ def draw_random_identified_sets(
                     two_c, c_posterior_index = sample_tolerance_surface(
                         c_surface,
                         c_query,
-                        random_seed=_stable_seed(random_seed, sample_id, statistic.candidate, "c"),
+                        random_seed=sha256_seed(random_seed, sample_id, statistic.candidate, "c"),
                         allow_extrapolation=not require_source_support,
                         return_index=True,
                     )
                     two_d, d_posterior_index = sample_tolerance_surface(
                         d_surface,
                         d_query,
-                        random_seed=_stable_seed(random_seed, sample_id, statistic.candidate, "d"),
+                        random_seed=sha256_seed(random_seed, sample_id, statistic.candidate, "d"),
                         allow_extrapolation=not require_source_support,
                         return_index=True,
                     )
@@ -2298,8 +2331,8 @@ def draw_rct_reference_posterior(
     alpha: float = 1.0,
     min_arm_count: int = 1,
     random_seed: int = 20260922,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
 ) -> pd.DataFrame:
     """Draw held-out randomized CATE and target-weighted ATE references.
@@ -2330,7 +2363,7 @@ def draw_rct_reference_posterior(
     rows: list[dict[str, Any]] = []
     for draw_index in range(int(n_draws)):
         target_draw = target_pmf_draws[draw_index % len(target_pmf_draws)]
-        rng = np.random.default_rng(_stable_seed(random_seed, "rct-reference", draw_index))
+        rng = np.random.default_rng(sha256_seed(random_seed, "rct-reference", draw_index))
         cate: dict[tuple[int, ...], float] = {}
         for z in z_values:
             arm = {}

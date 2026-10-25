@@ -20,6 +20,7 @@ import pandas as pd
 from scipy.optimize import linprog
 
 from . import naturalness_statistics
+from .probability_backends import get_probability_backend, probability_backend_names
 from .naturalness_target_policy import (
     TargetNaturalnessChoice,
     TargetNaturalnessPolicyResult,
@@ -33,14 +34,18 @@ ChoiceLike = Union[
     pd.Series,
 ]
 
-HIERARCHICAL_DIRICHLET_BACKENDS = {
-    "hierarchical_dirichlet",
-}
-HIERARCHICAL_DIRICHLET_DRAW_BACKENDS = {
-    "hierarchical_dirichlet_draws",
-    "hierarchical_dirichlet_posterior",
-    "dirichlet_posterior",
-}
+# Snapshots of the backend registry at import, kept for existing importers. The
+# estimators below query the registry itself, so later registrations count too.
+HIERARCHICAL_DIRICHLET_BACKENDS = set(
+    probability_backend_names(
+        target_lp=True, posterior_draws=False, fit_backend="hierarchical_dirichlet"
+    )
+)
+HIERARCHICAL_DIRICHLET_DRAW_BACKENDS = set(
+    probability_backend_names(
+        target_lp=True, posterior_draws=True, fit_backend="hierarchical_dirichlet"
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -185,12 +190,7 @@ def estimate_target_observed_binary_quantities(
             min_count=min_count,
             alpha=alpha,
         )
-    if probability_backend in {
-        *HIERARCHICAL_DIRICHLET_BACKENDS,
-        *HIERARCHICAL_DIRICHLET_DRAW_BACKENDS,
-        "xgboost",
-        "tabicl_v2",
-    }:
+    if probability_backend in probability_backend_names(target_lp=True, model_based=True):
         return _estimate_target_observed_binary_quantities_model(
             idle=idle,
             treatment=treatment,
@@ -338,8 +338,8 @@ def _estimate_target_observed_binary_quantities_model(
     draw_seed: Optional[int] = None
     backend_for_model = probability_backend
     model_kwargs = dict(probability_model_kwargs or {})
-    if backend_for_model in HIERARCHICAL_DIRICHLET_DRAW_BACKENDS:
-        backend_for_model = "hierarchical_dirichlet"
+    if backend_for_model in probability_backend_names(target_lp=True, posterior_draws=True):
+        backend_for_model = get_probability_backend(backend_for_model).fit_name
         if "posterior_sample_seed" in model_kwargs:
             draw_seed = int(model_kwargs.pop("posterior_sample_seed"))
 

@@ -7,7 +7,6 @@ The LP solver requires discrete covariate spaces to enumerate all possible
 """
 
 import pandas as pd
-import numpy as np
 from typing import List, Optional
 
 
@@ -101,24 +100,3 @@ def get_discretized_covariate_names(
     """Return list of discretized covariate column names."""
     return [f'{age_col}_cat', gender_col, f'{polideo_col}_cat']
 
-
-# Test
-if __name__ == "__main__":
-    # Load sample data
-    from pathlib import Path
-
-    # Try CSV first (the actual format)
-    data_path = Path('confounded_datasets/anchoring1/age_beta0.5_seed42.csv')
-    if data_path.exists():
-        data = pd.read_csv(data_path)
-        result = discretize_covariates(data)
-        print("Original columns:", list(data.columns)[:10], "...")
-        print("New columns:", [c for c in result.columns if c not in data.columns])
-        print("\nAge discretization:")
-        print(result[['resp_age', 'resp_age_cat']].head(10))
-        print("\nPolideo discretization:")
-        print(result[['resp_polideo', 'resp_polideo_cat']].head(10))
-        print("\nDiscretized covariate names:")
-        print(get_discretized_covariate_names())
-    else:
-        print(f"Data file not found: {data_path}")

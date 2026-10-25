@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import subprocess
 import sys
-from typing import Dict, Any
 
 import causal_grounding.predictors as predictors_module
 from causal_grounding.predictors import (
@@ -308,7 +307,7 @@ class TestXGBoostPredictorInit:
     def test_default_init(self):
         """Test default initialization."""
         predictor = XGBoostPredictor()
-        assert predictor.use_grid_search == True
+        assert predictor.use_grid_search is True
         assert predictor.cv_folds == 5
 
     def test_custom_init(self):
@@ -323,7 +322,7 @@ class TestXGBoostPredictorInit:
             random_state=42,
             n_jobs=3,
         )
-        assert predictor.use_grid_search == False
+        assert predictor.use_grid_search is False
         assert predictor.n_estimators_range == [50, 100]
         assert predictor.n_estimators == 80
         assert predictor.max_depth == 2
@@ -390,14 +389,14 @@ class TestXGBoostOutcome:
 
         assert result is predictor
         assert predictor._outcome_model is not None
-        assert predictor._is_binary_outcome == True
+        assert predictor._is_binary_outcome is True
 
     def test_fit_outcome_continuous(self, continuous_outcome_data):
         """Test fitting outcome model with continuous outcome."""
         predictor = XGBoostPredictor(use_grid_search=False, random_state=42)
         predictor.fit_outcome(continuous_outcome_data, 'Y', 'X', ['Z'])
 
-        assert predictor._is_binary_outcome == False
+        assert predictor._is_binary_outcome is False
 
     def test_predict_outcome(self, binary_data):
         """Test predicting outcome."""

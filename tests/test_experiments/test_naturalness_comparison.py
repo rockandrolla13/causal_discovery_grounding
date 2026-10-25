@@ -8,11 +8,13 @@ evaluation-only, and that the roster cannot be silently misconfigured.
 """
 
 from dataclasses import replace
+import json
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from causal_grounding.manski import manski_bounds
 from experiments import naturalness_comparison as comparison
 from experiments import exp28_twins_method_comparison as exp28
 
@@ -262,7 +264,7 @@ def test_latent_assignment_mechanism_is_refused_rather_than_ignored() -> None:
 def test_manski_absent_arm_is_retained() -> None:
     """One-arm and missing cells retain their unobserved outcome mass."""
     target = pd.DataFrame({"z": [0, 0], "iv": [1, 1], "dv_binary": [1, 0]})
-    result = comparison.manski_bounds(
+    result = manski_bounds(
         target, pd.DataFrame({"z": [0, 1]}), ("z",), 1
     )
     np.testing.assert_allclose(result.lower, [-0.5, -1.0])
@@ -381,7 +383,7 @@ def test_the_runner_caps_both_blearner_arms_before_scoring(tmp_path, monkeypatch
     strata = pd.DataFrame({"z": [0, 1]})
     target_idle = pd.DataFrame({"z": [0, 0, 1, 1] * 10, "iv": [0, 1] * 20,
                                 "dv_binary": [0, 1, 1, 0] * 10})
-    baseline = comparison.manski_bounds(target_idle, strata, ("z",), 1)
+    baseline = manski_bounds(target_idle, strata, ("z",), 1)
 
     def widest(target_idle, strata, covariates, gamma, *args):
         """Stand in for the B-Learner with an interval spanning [-1, 1]."""
@@ -400,3 +402,38 @@ def test_the_runner_caps_both_blearner_arms_before_scoring(tmp_path, monkeypatch
         np.testing.assert_allclose(bounds[arm].upper, baseline.upper)
         written = pd.read_parquet(tmp_path / f"{arm}_raw.parquet")
         assert written.uncapped_lower.eq(-1.).all() and written.uncapped_upper.eq(1.).all()
+
+
+def test_parallel_grid_matches_the_serial_grid(tmp_path, monkeypatch) -> None:
+    """``grid_n_jobs=2`` gives the serial grid's metrics, bounds and row order.
+
+    The dataset is prepared in the parent process, so the stub reaches the spawned
+    workers inside each job. Only ``fit_seconds``, a wall-clock time, may differ.
+    """
+    # run_comparison writes through experiments.benchmarks, which imports catenets.
+    pytest.importorskip("catenets")
+    names = ["birmon", "gestat10", "mager8", "meduc6"]
+    monkeypatch.setattr(comparison.data, "prepare_dataset", lambda *args, **kwargs: toy_prepared(names))
+    data_root = tmp_path / "data"
+    (data_root / "twins").mkdir(parents=True)
+    for letter in ("X", "T", "Y"):
+        (data_root / "twins" / f"twin_pairs_{letter}_3years_samesex.csv").write_text(letter)
+    base = comparison.ComparisonConfig(
+        data_root=str(data_root), seeds=(1, 2), betas=(.5, 1.), target_sites=("0", "3"),
+        twins_bias_covariate="meduc6", withheld_covariates=("meduc6",), max_fit_rows=400,
+        methods=("manski", "balke_pearl"), meta_learners=(), min_cell_count=5)
+    runs = {}
+    for n_jobs in (1, 2):
+        output = tmp_path / f"grid{n_jobs}"
+        runs[n_jobs] = comparison.run_comparison(
+            replace(base, grid_n_jobs=n_jobs, output_dir=str(output))), output
+    serial, parallel = (runs[n][0].drop(columns="fit_seconds") for n in (1, 2))
+    assert len(serial) == 2 * 2 * 2 * 2
+    pd.testing.assert_frame_equal(serial, parallel, check_exact=True)
+    leaves = sorted(p.relative_to(runs[1][1]) for p in runs[1][1].rglob("bounds_scored.parquet"))
+    assert len(leaves) == 8
+    for leaf in leaves:
+        pd.testing.assert_frame_equal(pd.read_parquet(runs[1][1] / leaf),
+                                      pd.read_parquet(runs[2][1] / leaf), check_exact=True)
+    completion = [(json.loads((runs[n][1] / "completion.json").read_text())) for n in (1, 2)]
+    assert completion[0] == completion[1]

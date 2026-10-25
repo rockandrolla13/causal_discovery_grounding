@@ -13,14 +13,12 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from causal_grounding.loaders.schema import MANYLABS_COVARIATES
 from experiments.backdoor_cate_error_analysis import (
     write_backdoor_cate_error_analysis_plots,
 )
-from experiments.utils import (
-    USEFUL_COVARIATES,
-    make_multi_metric_summary_latex_table,
-    render_latex_table,
-)
+from experiments.covariate_preparation import USEFUL_COVARIATES
+from experiments.latex_tables import make_multi_metric_summary_latex_table, render_latex_table
 
 
 DEFAULT_EXP16_STUDIES = ("allowedforbidden", "gainloss", "reciprocity")
@@ -53,9 +51,7 @@ EXP16_PLOT_SUMMARY_KEYS = (
     "pattern",
     "beta",
     "target_site",
-    "resp_age_bin",
-    "resp_gender_bin",
-    "resp_polideo_bin",
+    *MANYLABS_COVARIATES,
     "z_value_str",
 )
 

@@ -19,10 +19,11 @@ pytest.importorskip("torch")
 pytest.importorskip("catenets")
 pytest.importorskip("sklearn_quantile")
 
-import experiments.exp16_osrct_calibrated_policy as exp16
+import experiments.osrct_target_pipeline as target_pipeline
 import experiments.exp25_tau_floor_regrounding as reg
+from causal_grounding.paper_grids import floor_taus
 from causal_grounding.train_target_split import create_train_target_split
-from experiments.exp16_osrct_calibrated_policy import Exp16Config
+from experiments.osrct_target_pipeline import Exp16Config
 
 
 def _synthetic_osrct(seed=0, n_sites=8, n_per_site=150):
@@ -77,7 +78,7 @@ def exp16_run(tmp_path_factory):
     """Fit Exp16 once and persist its Stage-2 observations as Exp25 does."""
     osrct, rct = _synthetic_osrct()
     config = _wiring_config()
-    outputs = exp16.run_one_target(
+    outputs = target_pipeline.run_one_target(
         osrct_data=osrct, rct_data=rct, target_site="pi", target_index=7,
         config=config, base_metadata={},
     )
@@ -160,10 +161,10 @@ def test_raised_floor_drops_small_tau_from_gp_and_target(exp16_run):
 
 def test_floor_taus_and_shards():
     """Floors keep the grid's upper values; shards partition the conditions."""
-    assert reg.floor_taus((0.01, 0.05, 0.075, 0.1), 0.05) == (0.05, 0.075, 0.1)
-    assert reg.floor_taus((0.01, 0.05, 0.075, 0.1), 0.075) == (0.075, 0.1)
+    assert floor_taus((0.01, 0.05, 0.075, 0.1), 0.05) == (0.05, 0.075, 0.1)
+    assert floor_taus((0.01, 0.05, 0.075, 0.1), 0.075) == (0.075, 0.1)
     with pytest.raises(ValueError):
-        reg.floor_taus((0.01, 0.05), 0.5)
+        floor_taus((0.01, 0.05), 0.5)
     items = list(range(10))
     shards = [reg._shard(items, index, 3) for index in range(3)]
     assert sorted(sum(shards, [])) == items
@@ -350,7 +351,7 @@ def test_admissible_choices_keep_the_pareto_frontier_per_candidate():
                 if epsilon >= smallest_epsilon and tau <= largest_tau:
                     rows.append({"covariate": covariate, "epsilon": epsilon, "tau": tau})
     rows += [{"covariate": "c", "epsilon": 0.05, "tau": 0.075}, {"covariate": "c", "epsilon": 0.10, "tau": 0.2}]
-    choices = exp16._finalize_policy_choices(pd.DataFrame(rows), top_k=1, candidate_selection_mode="all_triggered")
+    choices = target_pipeline.finalize_policy_choices(pd.DataFrame(rows), top_k=1, candidate_selection_mode="all_triggered")
 
     kept = reg.admissible_choices(choices)
 
@@ -497,7 +498,6 @@ def _write(frame, path):
 def test_summarize_arms_scores_every_method_with_manski_fallback(tmp_path):
     """Synthetic leaves: Manski fills a stratum without an optimal draw, transport is scored at shift 0."""
     strata = pd.DataFrame({"resp_age_bin": [0, 1], "resp_gender_bin": [0, 0], "resp_polideo_bin": [0, 0]})
-    keys = list(strata.columns)
     store = tmp_path / "20260917" / "tabicl_v2" / "tabicl_v2" / "tabicl_v2"
     condition = reg.Condition(str(store), 0, "s", "age", 1.0)
     leaf = Path("floor=0.075") / condition.label

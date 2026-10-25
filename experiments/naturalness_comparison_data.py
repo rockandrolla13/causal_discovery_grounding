@@ -21,20 +21,6 @@ import pandas as pd
 LOGGER = logging.getLogger(__name__)
 MISSING_CODE = 255
 
-def stable_seed(*parts: Any) -> int:
-    """Return a reproducible seed from arbitrary parts.
-
-    Python randomises string hashing per process, so ``hash("name")`` differs
-    between runs; this uses a CRC32 checksum of the parts' text instead.
-
-    Args:
-        *parts: Values whose text form identifies the draw.
-
-    Returns:
-        A seed in ``[0, 2**32)``.
-    """
-    return zlib.crc32("|".join(str(part) for part in parts).encode("utf-8"))
-
 
 # --------------------------------------------------------------------------
 # Binarisation rules
@@ -237,6 +223,9 @@ def selection_probability(z_bias: np.ndarray, beta: float, intercept: float = 0.
 
     The covariate is standardised before the logistic transform, matching
     ``osrct_benchmark_v1.0/code/osrct.py``, so ``beta`` means the same there.
+    The two agree bit for bit on complete, non-degenerate covariates. They differ
+    on NaN input and on a constant covariate whose float mean rounds; see
+    ``tests/test_experiments/test_osrct_selection_agreement.py``.
 
     Args:
         z_bias: Biasing covariate values.

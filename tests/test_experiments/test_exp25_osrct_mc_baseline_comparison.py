@@ -19,6 +19,7 @@ pytest.importorskip("sklearn_quantile")
 import experiments.exp16_osrct_calibrated_policy as exp16
 import experiments.exp18_cb_meta_learner_comparison as exp18
 import experiments.exp25_osrct_mc_baseline_comparison as exp25
+import experiments.osrct_target_pipeline as target_pipeline
 
 
 def _comparison_fixture() -> pd.DataFrame:
@@ -806,9 +807,9 @@ def test_identification_bounds_only_is_a_separate_mode() -> None:
                                "--identification-min-count", "10"])
     assert config.identification_bounds_only
     assert config.identification_tau == 0.05 and config.identification_min_count == 10
-    assert exp25.Exp25Config().identification_tau == min(exp16.Exp16Config().taus)
+    assert exp25.Exp25Config().identification_tau == min(target_pipeline.Exp16Config().taus)
     # Balke-Pearl shares the support floor Exp25's Naturalness runs with.
-    assert exp25.Exp25Config().identification_min_count == exp16.Exp16Config().min_cell_count
+    assert exp25.Exp25Config().identification_min_count == target_pipeline.Exp16Config().min_cell_count
     for other in ("baseline_only", "dummy"):
         with pytest.raises(ValueError, match="identification_bounds_only"):
             exp25.Exp25Config(identification_bounds_only=True, **{other: True})
@@ -1109,28 +1110,28 @@ def test_exp16_posterior_draw_threads_preserve_sample_results(
         )
 
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "estimate_target_observed_binary_quantities",
         estimate,
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "solve_target_bounds_from_observed_binary_quantities",
         solve,
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "complete_lp_strata",
         lambda bounds, target_idle, config: bounds.copy(),
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "summarize_lp_posterior_bounds",
         lambda samples, covariates: samples.sort_values(
             "lp_posterior_sample_id"
         ).reset_index(drop=True),
     )
-    base = exp16.Exp16Config(
+    base = target_pipeline.Exp16Config(
         fit_gp=True,
         lp_posterior_samples=4,
         lp_probability_backend="hierarchical_dirichlet_draws",
@@ -1147,14 +1148,14 @@ def test_exp16_posterior_draw_threads_preserve_sample_results(
     )
     choices = pd.DataFrame({"candidate": ["age"]})
 
-    serial = exp16.solve_choices_lp_posterior_samples(
+    serial = target_pipeline.solve_choices_lp_posterior_samples(
         target,
         choices,
         Grounder(),
         base,
         random_seed=101,
     )[1]
-    threaded = exp16.solve_choices_lp_posterior_samples(
+    threaded = target_pipeline.solve_choices_lp_posterior_samples(
         target,
         choices,
         Grounder(),

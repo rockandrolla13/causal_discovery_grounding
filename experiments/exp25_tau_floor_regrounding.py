@@ -34,7 +34,6 @@ import shutil
 import sys
 import tempfile
 import time
-import zlib
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
@@ -46,11 +45,8 @@ import yaml
 from scipy import stats
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-import experiments.exp16_osrct_calibrated_policy as exp16
+import experiments.osrct_target_pipeline as target_pipeline
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from causal_grounding.lp_solver_learned_naturalness import (
     estimate_target_observed_binary_quantities,
 )
@@ -62,40 +58,40 @@ from causal_grounding.naturalness_grounder import (
     validate_gp_target_scale,
     validate_gp_training_target,
 )
+from causal_grounding.paper_grids import MIN_RELEVANCE_TAU, PAPER_BETAS, floor_taus
+from causal_grounding.seeding import crc32_seed
 from causal_grounding.train_target_split import create_train_target_split
 from experiments.benchmarks import atomic_write_parquet, format_beta
-from experiments.exp16_osrct_calibrated_policy import Exp16Config
+from experiments.osrct_target_pipeline import Exp16Config
 from experiments.exp25_osrct_mc_baseline_comparison import (
     Exp25Config,
     _exp16_config_for_replication,
 )
-from experiments.exp32_manylabs_noise_candidates import (
-    _parquet_safe,
+from experiments.mc_store import (
     exp25_target_index,
-    floor_taus,
     load_exp25_store_config,
+    parquet_safe as _parquet_safe,
 )
 from experiments.osrct_data_utils import load_prepared_data
-from experiments.utils import (
+from experiments.latex_tables import render_latex_table
+from experiments.run_config import (
     build_configured_naturalness_grounder,
     build_lp_probability_model_kwargs,
-    json_default,
-    render_latex_table,
     resolve_lp_probability_backend,
     resolve_target_trigger_probability_backend,
     uses_hierarchical_dirichlet_draws,
 )
+from experiments.run_manifest import json_default
 
 
 #: Tau floors: 0.01 keeps Exp25's grid (the replay check); 0.05 drops tau = 0.01; 0.075 also drops 0.05.
-DEFAULT_FLOORS = (0.01, 0.05, 0.075)
-PAPER_BETAS = (0.5, 1.0, 1.5, 2.0)
+DEFAULT_FLOORS = (0.01, 0.05, MIN_RELEVANCE_TAU)
 #: Stage-2 columns the Stage-3 GP and the tolerance lookup read.
 STAGE2_COLUMNS = (
     "site_id", "covariate", "covariate_index", "epsilon", "tau", "i_deviation",
     "d_strength", "trigger_fired", "c_hat", "d_hat", "n_z_minus_evaluated",
 )
-TARGET_IDLE_COLUMNS = ("site", "iv", "dv_binary", "F")
+TARGET_IDLE_COLUMNS = ("site", TREATMENT_COLUMN, OUTCOME_COLUMN, "F")
 #: Target (epsilon, tau) pairs entering the program: every triggered pair (Exp25) or only the
 #: admissible ones (:func:`admissible_choices`).
 TARGET_PAIRS = ("all", "admissible")
@@ -239,26 +235,26 @@ def _flip_target_outcomes(
         if equal_arms:
             reachable = [abs(change) for change in changes.values()]
             for arm in (1, 0):
-                members = stratum.loc[stratum["iv"].astype(int).eq(arm)]
+                members = stratum.loc[stratum[TREATMENT_COLUMN].astype(int).eq(arm)]
                 source = 0 if changes[arm] > 0 else 1
                 if len(members):
-                    reachable.append(float(members["dv_binary"].astype(int).eq(source).mean()))
+                    reachable.append(float(members[OUTCOME_COLUMN].astype(int).eq(source).mean()))
             magnitude = min(reachable)
             changes = {arm: np.sign(change) * magnitude for arm, change in changes.items()}
         for arm in (1, 0):
             change = changes[arm]
-            members = stratum.loc[stratum["iv"].astype(int).eq(arm)]
+            members = stratum.loc[stratum[TREATMENT_COLUMN].astype(int).eq(arm)]
             source = 0 if change > 0 else 1
-            eligible = np.sort(members.loc[members["dv_binary"].astype(int).eq(source), "id"].to_numpy())
+            eligible = np.sort(members.loc[members[OUTCOME_COLUMN].astype(int).eq(source), "id"].to_numpy())
             wanted = int(round(len(members) * abs(change)))
             chosen = rng.choice(eligible, size=min(wanted, len(eligible)), replace=False) if wanted else []
-            flips.extend({"id": unit, "dv_binary": 1 - source} for unit in chosen)
+            flips.extend({"id": unit, OUTCOME_COLUMN: 1 - source} for unit in chosen)
             realized = (len(chosen) / len(members)) if len(members) else 0.0
             record.update({f"n_arm{arm}": len(members), f"wanted_arm{arm}": wanted, f"flipped_arm{arm}": len(chosen),
                            f"rate_change_arm{arm}": realized if change > 0 else -realized})
         record["cate_shift"] = record["rate_change_arm1"] - record["rate_change_arm0"]
         log.append(record)
-    return pd.DataFrame(flips, columns=["id", "dv_binary"]), pd.DataFrame(log)
+    return pd.DataFrame(flips, columns=["id", OUTCOME_COLUMN]), pd.DataFrame(log)
 
 
 def _check_trial_ids(trial: pd.DataFrame) -> None:
@@ -296,7 +292,7 @@ def effect_shift_flips(
         raise ValueError(f"delta must lie in (-1, 1); got {delta}")
     _check_trial_ids(trial)
     half = float(delta) / 2.0
-    seed = [EFFECT_SHIFT_SEED, zlib.crc32(str(study).encode()), int(round((float(delta) + 1.0) * 1e6))]
+    seed = [EFFECT_SHIFT_SEED, crc32_seed(str(study)), int(round((float(delta) + 1.0) * 1e6))]
     return _flip_target_outcomes(trial, lambda record, arm: half if arm == 1 else -half,
                                  covariates=covariates, seed=seed)
 
@@ -333,7 +329,7 @@ def direct_effect_flips(
         raise ValueError(f"{candidate} is not one of the stratum covariates {list(covariates)}")
     _check_trial_ids(trial)
     half = float(gamma) / 2.0
-    seed = [EFFECT_SHIFT_SEED, zlib.crc32(f"{study}|{candidate}".encode()), int(round((float(gamma) + 2.0) * 1e6))]
+    seed = [EFFECT_SHIFT_SEED, crc32_seed(f"{study}|{candidate}"), int(round((float(gamma) + 2.0) * 1e6))]
     return _flip_target_outcomes(trial, lambda record, arm: half if int(record[candidate]) == 1 else -half,
                                  covariates=covariates, seed=seed, equal_arms=True)
 
@@ -348,9 +344,9 @@ def apply_effect_shift(rows: pd.DataFrame, flips: pd.DataFrame, *, target_site: 
     if flips.empty:
         return shifted
     at_target = shifted["site"].astype(str).eq(str(target_site))
-    new = shifted.loc[at_target, "id"].map(flips.set_index("id")["dv_binary"])
+    new = shifted.loc[at_target, "id"].map(flips.set_index("id")[OUTCOME_COLUMN])
     changed = new.notna()
-    shifted.loc[new.index[changed], "dv_binary"] = new[changed].astype(int).to_numpy()
+    shifted.loc[new.index[changed], OUTCOME_COLUMN] = new[changed].astype(int).to_numpy()
     return shifted
 
 
@@ -451,8 +447,8 @@ def mismatched_source_condition(
 
 def _difference_in_means(group: pd.DataFrame) -> tuple[float, float]:
     """Return a site-stratum difference in means and its smoothed Wald variance."""
-    treated = group.loc[group["iv"].astype(int).eq(1), "dv_binary"].astype(float)
-    control = group.loc[group["iv"].astype(int).eq(0), "dv_binary"].astype(float)
+    treated = group.loc[group[TREATMENT_COLUMN].astype(int).eq(1), OUTCOME_COLUMN].astype(float)
+    control = group.loc[group[TREATMENT_COLUMN].astype(int).eq(0), OUTCOME_COLUMN].astype(float)
     # Add-one-half smoothing keeps the variance positive in all-0 or all-1 arms.
     p1 = (treated.sum() + 0.5) / (len(treated) + 1.0)
     p0 = (control.sum() + 0.5) / (len(control) + 1.0)
@@ -490,7 +486,7 @@ def transport_intervals(
     for key, stratum in sources.groupby(list(covariates), sort=True):
         estimates = []
         for _, group in stratum.groupby("site", sort=True):
-            arms = group["iv"].astype(int)
+            arms = group[TREATMENT_COLUMN].astype(int)
             if arms.eq(1).sum() >= min_arm_count and arms.eq(0).sum() >= min_arm_count:
                 estimates.append(_difference_in_means(group))
         record = dict(zip(covariates, key if isinstance(key, tuple) else (key,)))
@@ -551,17 +547,17 @@ def compute_target_tables(target_idle: pd.DataFrame, config: Exp16Config) -> dic
     Returns:
         ``{"trigger": table or None, "lp": table or None}``.
     """
-    reusable = exp16._fit_reusable_tabicl_target_quantities(target_idle, config)
+    reusable = target_pipeline.fit_reusable_tabicl_target_quantities(target_idle, config)
     if reusable is not None:
         return {"trigger": reusable, "lp": reusable}
-    trigger = exp16._estimate_target_trigger_quantities(
+    trigger = target_pipeline.estimate_target_trigger_quantities(
         target_idle, config, backend=resolve_target_trigger_probability_backend(config)
     )
     backend = resolve_lp_probability_backend(config)
     lp = None
     if not uses_hierarchical_dirichlet_draws(backend):
         lp = estimate_target_observed_binary_quantities(
-            target_idle, treatment="iv", outcome="dv_binary",
+            target_idle, treatment=TREATMENT_COLUMN, outcome=OUTCOME_COLUMN,
             covariates=config.covariates, model_covariates=config.lp_probability_covariates,
             probability_backend=backend, min_count=int(config.min_cell_count),
             probability_model_kwargs=build_lp_probability_model_kwargs(config, backend),
@@ -582,7 +578,7 @@ def admissible_choices(choices: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         choices: Selected target rows in policy order, as returned by
-            :func:`exp16.select_policy_choices`.
+            :func:`target_pipeline.select_policy_choices`.
 
     Returns:
         The admissible rows in their original order, re-finalized so that the
@@ -600,7 +596,7 @@ def admissible_choices(choices: pd.DataFrame) -> pd.DataFrame:
         strictly_better = (epsilon < epsilon[row] - 1e-12) | (tau > tau[row] + 1e-12)
         keep[row] = not (same & no_worse & strictly_better).any()
     top_k = int(choices["policy_top_k"].iloc[0]) if "policy_top_k" in choices else 1
-    return exp16._finalize_policy_choices(
+    return target_pipeline.finalize_policy_choices(
         choices.loc[keep], top_k=top_k, candidate_selection_mode="admissible_triggered",
     )
 
@@ -641,12 +637,12 @@ def reground_condition(
         config=config, observations=observations, target_idle=target_idle, tables=tables, floor=floor,
         gp_training_target=gp_training_target, gp_target_scale=gp_target_scale, target_pairs=target_pairs,
     )
-    _, _, summary = exp16.solve_choices_lp_posterior_samples(
+    _, _, summary = target_pipeline.solve_choices_lp_posterior_samples(
         target_idle, choices, grounder, floored,
         random_seed=int(config.seed + 20_000 + target_index),
         observed_quantities=tables.get("lp"),
     )
-    gp = exp16._grounder_gp_diagnostics(grounder, training_stage=f"tau_floor_{floor:g}")
+    gp = target_pipeline.grounder_gp_diagnostics(grounder, training_stage=f"tau_floor_{floor:g}")
     return {"posterior_summary": summary, "choices": choices, "gp": gp}
 
 
@@ -681,15 +677,15 @@ def ground_and_choose(
     grounder.gp_target_scale = validate_gp_target_scale(gp_target_scale)
     keep = np.isclose(observations["tau"].to_numpy(float)[:, None], np.asarray(taus)[None, :]).any(axis=1)
     grounder.observations_ = observations.loc[keep].reset_index(drop=True)
-    grounder.treatment_, grounder.outcome_, grounder.regime_col_ = "iv", "dv_binary", "F"
+    grounder.treatment_, grounder.outcome_, grounder.regime_col_ = TREATMENT_COLUMN, OUTCOME_COLUMN, "F"
     if floored.fit_gp:
         grounder.fit_stage3_gp()
     grounder.is_fitted_ = True
 
-    candidates = exp16._policy_candidates(
+    candidates = target_pipeline.build_policy_candidates(
         grounder, target_idle, floored, trigger_quantities=tables.get("trigger")
     )
-    choices = exp16.select_policy_choices(
+    choices = target_pipeline.select_policy_choices(
         candidates,
         min(int(value) for value in floored.policy_top_k_values),
         mode=floored.candidate_selection_mode,
@@ -797,7 +793,7 @@ def ablate_condition(
     summaries = []
     for rule, two_c, two_d in rules:
         draws = int(floored.lp_posterior_samples) if rule == "prior" else 1
-        _, _, summary = exp16.solve_choices_lp_posterior_samples(
+        _, _, summary = target_pipeline.solve_choices_lp_posterior_samples(
             target_idle, choices, _RuleTolerances(grounder, rule, two_c=two_c, two_d=two_d),
             replace(floored, lp_posterior_samples=draws), random_seed=seed,
             observed_quantities=tables.get("lp"),
@@ -909,11 +905,11 @@ def shifted_target_outputs(
     import experiments.exp25_osrct_mc_baseline_comparison as exp25
 
     idle, trial, trials, log = target_data(config, effect_shift, direct_effect)
-    key = [*config.covariates, "iv", "dv_binary"]
+    key = [*config.covariates, TREATMENT_COLUMN, OUTCOME_COLUMN]
     if not idle[key].reset_index(drop=True).astype(int).equals(target_idle[key].reset_index(drop=True).astype(int)):
         raise ValueError(f"{condition.label}: the tables' target rows are not the rows modified by "
                          f"effect_shift={effect_shift}, direct_effect={direct_effect}")
-    reference = exp16.build_empirical_rct_cate_labels(
+    reference = target_pipeline.build_empirical_rct_cate_labels(
         trial, covariates=config.covariates, min_arm_count=int(config.rct_min_arm_count),
     )
     published = published_identities(identities_root, condition)
@@ -1227,7 +1223,7 @@ def family_mismatch_table_latex(strata: pd.DataFrame, *, grounding: str = "per_s
 
 def summarize_arms(
     conditions: Sequence[Condition], arms_root: Path, *, published_root: Path, identities_root: Path,
-    floor: float = 0.075,
+    floor: float = MIN_RELEVANCE_TAU,
 ) -> dict[str, pd.DataFrame]:
     """Score the four mechanism arms of Exp25 and write their tables.
 

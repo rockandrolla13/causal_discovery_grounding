@@ -10,7 +10,7 @@ Gentzel, M., Garant, D., & Jensen, D. (2021). The Case for Evaluating Causal
 Models Using Controlled Experiments. NeurIPS 2021.
 """
 
-from typing import Dict, List, Callable, Any
+from typing import Dict, List, Any
 
 # =============================================================================
 # EXPERIMENTAL GRID DEFINITION
@@ -282,7 +282,7 @@ if __name__ == "__main__":
     for name, config in MULTI_COVARIATE_PATTERNS.items():
         print(f"    - {name}: {config['description']}")
 
-    print(f"\nTotal Configurations:")
+    print("\nTotal Configurations:")
     print(f"  Pooled datasets: {summary['n_pooled_datasets']}")
     print(f"  Site-stratified (estimate): {summary['n_site_stratified_datasets_estimate']}")
     print(f"  Total (estimate): {summary['n_total_estimate']}")

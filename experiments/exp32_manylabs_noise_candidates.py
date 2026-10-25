@@ -35,22 +35,24 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
-import yaml
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
+from causal_grounding.paper_grids import floor_taus
+from causal_grounding.seeding import blake2b_uniform
 from experiments.benchmarks import atomic_write_parquet, format_beta
-from experiments.exp16_osrct_calibrated_policy import Exp16Config, run_one_target
+from experiments.osrct_target_pipeline import Exp16Config, run_one_target
 from experiments.exp25_osrct_mc_baseline_comparison import (
     Exp25Config,
     _exp16_config_for_replication,
 )
 from experiments.interval_stats import wilson_interval
-from experiments.osrct_data_utils import iter_base_configs, load_prepared_data
-from experiments.utils import json_default, write_run_manifest
+from experiments.mc_store import (
+    exp25_target_index,
+    load_exp25_store_config,
+    parquet_safe,
+)
+from experiments.osrct_data_utils import load_prepared_data
+from experiments.run_manifest import json_default, write_run_manifest
 
 
 EXP32_NAME = "exp32_manylabs_noise_candidates"
@@ -152,14 +154,6 @@ class Exp32Config:
             raise ValueError("tau_floor must be finite and nonnegative")
 
 
-def floor_taus(taus: Sequence[float], floor: float) -> tuple[float, ...]:
-    """Return the tau grid values at or above ``floor``."""
-    kept = tuple(float(t) for t in taus if float(t) >= float(floor) - 1e-12)
-    if not kept:
-        raise ValueError(f"No tau value is at or above floor {floor}")
-    return kept
-
-
 def noise_candidate_names(n_noise: int) -> tuple[str, ...]:
     """Return the ordered noise-candidate column names.
 
@@ -186,13 +180,6 @@ def _participant_key(site: Any, participant: Any) -> str:
     if isinstance(participant, (float, np.floating)) and float(participant).is_integer():
         participant = int(participant)
     return f"{site}|{participant}"
-
-
-def _uniform_from_key(text: str) -> float:
-    """Map a text key to a reproducible uniform draw in ``[0, 1)``."""
-
-    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest()
-    return int.from_bytes(digest, "little") / float(2**64)
 
 
 def add_noise_candidates(
@@ -243,99 +230,12 @@ def add_noise_candidates(
         result = frame.copy()
         for index, name in enumerate(names, start=1):
             uniforms = np.array(
-                [_uniform_from_key(f"{seed}|{index}|{key}") for key in keys],
+                [blake2b_uniform(f"{seed}|{index}|{key}") for key in keys],
                 dtype=float,
             )
             result[name] = (uniforms < float(prevalence)).astype(int)
         augmented.append(result)
     return augmented
-
-
-def load_exp25_store_config(store: Path) -> Exp25Config:
-    """Rebuild the scientific Exp25 configuration recorded in a store.
-
-    Args:
-        store: Exp25 backend leaf containing ``run_manifest.yml``.
-
-    Returns:
-        Exp25 configuration with the store's seeds, grid and backends. The
-        RCT path is this checkout's copy of the ManyLabs pickle.
-
-    Raises:
-        FileNotFoundError: If the store has no manifest or replications.
-    """
-
-    manifest_path = store / "run_manifest.yml"
-    if not manifest_path.exists() or not (store / "replications").is_dir():
-        raise FileNotFoundError(
-            f"{store} is not an Exp25 backend leaf (run_manifest.yml and replications/)"
-        )
-    recorded = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))["config"]
-
-    def flag(value: Any) -> bool:
-        """Parse a manifest boolean written as text."""
-
-        return str(value).strip().lower() in {"1", "true", "yes"}
-
-    return Exp25Config(
-        n_replications=int(recorded["n_replications"]),
-        base_seed=int(recorded["base_seed"]),
-        studies=tuple(str(value) for value in recorded["studies"]),
-        bias_covariates=tuple(str(value) for value in recorded["bias_covariates"]),
-        betas=tuple(float(value) for value in recorded["betas"]),
-        target_site=str(recorded["target_site"]),
-        require_observed_gender=flag(recorded["require_observed_gender"]),
-        stage1_backend=str(recorded["stage1_backend"]),
-        target_trigger_probability_backend=str(
-            recorded["target_trigger_probability_backend"]
-        ),
-        tabicl_device=str(recorded["tabicl_device"]),
-        lp_probability_backend=str(recorded["lp_probability_backend"]),
-        lp_posterior_samples=int(recorded["lp_posterior_samples"]),
-        lp_posterior_n_jobs=int(recorded["lp_posterior_n_jobs"]),
-    )
-
-
-def exp25_target_index(
-    exp25: Exp25Config,
-    *,
-    study: str,
-    pattern: str,
-    beta: float,
-) -> int:
-    """Return the Exp16 target index Exp25 used for one condition.
-
-    Exp16 seeds source roles with ``seed + target_index`` and GP draws with
-    ``seed + 20000 + target_index``, where the index enumerates the full
-    study/pattern/beta grid. Reusing it keeps each ablation run paired with
-    the stored Exp25 fit.
-
-    Args:
-        exp25: Store configuration.
-        study: ManyLabs study.
-        pattern: OSRCT selection pattern.
-        beta: OSRCT selection strength.
-
-    Returns:
-        ``base_index * 10000`` for the single Exp25 target site.
-
-    Raises:
-        ValueError: If the condition is not part of the store's grid.
-    """
-
-    probe = Exp16Config(
-        studies=tuple(exp25.studies),
-        patterns=tuple(exp25.bias_covariates),
-        betas=tuple(exp25.betas),
-    )
-    for base_index, base in enumerate(iter_base_configs(probe)):
-        if (
-            base.study == study
-            and base.pattern == pattern
-            and np.isclose(float(base.beta), float(beta))
-        ):
-            return int(base_index * 10_000)
-    raise ValueError(f"Condition {study}/{pattern}/beta={beta} is not in the Exp25 store")
 
 
 def route_run_configs(
@@ -381,43 +281,6 @@ def route_run_configs(
             for name in noise_names
         ]
     raise ValueError(f"Unknown route {route!r}")
-
-
-def _parquet_safe(frame: pd.DataFrame) -> pd.DataFrame:
-    """Return a copy whose object columns hold only Parquet-friendly scalars.
-
-    Object columns holding containers, such as LP stratum-key tuples, or
-    mixed scalar types are written as text; single-type columns are kept.
-    """
-
-    def missing(value: Any) -> bool:
-        """Return whether a cell is empty."""
-
-        return value is None or (isinstance(value, float) and np.isnan(value))
-
-    def kind(value: Any) -> str:
-        """Classify a present cell by the Parquet type it would need."""
-
-        if isinstance(value, str):
-            return "text"
-        if isinstance(value, (bool, np.bool_)):
-            return "bool"
-        if isinstance(value, (int, float, np.integer, np.floating)):
-            return "number"
-        return "other"
-
-    result = frame.copy()
-    for column in result.columns:
-        if result[column].dtype != object:
-            continue
-        values = result[column]
-        kinds = {kind(value) for value in values if not missing(value)}
-        if len(kinds) <= 1 and "other" not in kinds:
-            continue
-        result[column] = values.map(
-            lambda value: value if missing(value) else str(value)
-        )
-    return result
 
 
 def _scientific_config(config: Exp32Config, exp25: Exp25Config) -> dict[str, Any]:
@@ -524,7 +387,7 @@ def run_labelled_config(
         for column, value in extra.items():
             frame[column] = value
         frame["run_label"] = run_label
-        atomic_write_parquet(_parquet_safe(frame), run_dir / f"{stored_name}.parquet")
+        atomic_write_parquet(parquet_safe(frame), run_dir / f"{stored_name}.parquet")
     record = {
         **dict(extra),
         "run_label": run_label,

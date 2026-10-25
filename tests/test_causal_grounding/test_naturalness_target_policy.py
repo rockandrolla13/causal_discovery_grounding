@@ -174,8 +174,11 @@ def test_source_and_model_target_triggers_match_on_shared_support():
 def test_public_naturalness_statistics_api_computes_trigger_values():
     """Public statistic helpers expose the target-trigger definitions."""
     idle = pd.DataFrame({"Z": [0, 0, 1, 1]})
-    outcome_probability = lambda y, x, z: float(z[0] == 1 and y == 1)
-    treatment_probability = lambda x, z: float((z[0] == 1) == (x == 1))
+    def outcome_probability(y, x, z):
+        return float(z[0] == 1 and y == 1)
+
+    def treatment_probability(x, z):
+        return float((z[0] == 1) == (x == 1))
 
     assert np.isclose(
         compute_i_deviation(["Z"], 0, [()], outcome_probability, idle),

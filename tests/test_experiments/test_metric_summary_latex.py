@@ -8,7 +8,7 @@ from experiments.naturalness_plotting import (
     build_exp16_plot_metric_summary_frame,
     write_exp16_plot_metric_summary_tables,
 )
-from experiments.utils import (
+from experiments.latex_tables import (
     make_metric_summary_latex_table,
     make_multi_metric_summary_latex_table,
     write_metric_summary_latex_table,

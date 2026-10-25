@@ -5,7 +5,6 @@ backend on synthetic data. It checks wiring only; no number it produces is a
 result.
 """
 
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,17 +19,16 @@ pytest.importorskip("catenets")
 pytest.importorskip("sklearn_quantile")
 
 import experiments.exp32_manylabs_noise_candidates as exp32
-from experiments.exp16_osrct_calibrated_policy import Exp16Config
+from experiments.osrct_target_pipeline import Exp16Config
 from experiments.exp32_manylabs_noise_candidates import (
     Exp32Config,
     add_noise_candidates,
-    exp25_target_index,
-    load_exp25_store_config,
     noise_candidate_names,
     route_run_configs,
     run_labelled_config,
     summarize_results,
 )
+from experiments.mc_store import exp25_target_index, load_exp25_store_config
 
 COVARIATES = list(Exp16Config().covariates)
 

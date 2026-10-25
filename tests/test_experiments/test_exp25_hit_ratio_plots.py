@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 import experiments.exp25_hit_ratio_analysis as analysis
+import experiments.hit_ratio_metrics as hit_metrics
 import experiments.exp25_hit_ratio_plots as plots
 
 from tests.test_experiments.test_exp25_hit_ratio_analysis import (
@@ -47,7 +48,7 @@ def _annotated_fixture() -> pd.DataFrame:
         )
         frames.append(blearner)
     models = pd.concat(frames, ignore_index=True, sort=False)
-    return analysis.annotate_reference_agreement(models)
+    return hit_metrics.annotate_reference_agreement(models)
 
 
 def test_wilson_interval_brackets_the_proportion() -> None:
@@ -374,8 +375,8 @@ def test_make_all_plots_writes_every_figure(tmp_path: Path) -> None:
     """The orchestrator renders each figure stem in the requested format."""
 
     annotated = _annotated_fixture()
-    pooled = analysis.summarize_agreement(annotated, grouping=("beta",))
-    confusion = analysis.build_sign_confusion(annotated)
+    pooled = hit_metrics.summarize_agreement(annotated, grouping=("beta",))
+    confusion = hit_metrics.build_sign_confusion(annotated)
     paths = plots.make_all_plots(
         annotated,
         pooled,
@@ -476,7 +477,7 @@ def test_gamma_grid_renders_a_swept_frontier(tmp_path: Path) -> None:
     for gamma in GRID_GAMMAS:
         label = f"fixed_{gamma:g}".replace(".", "p")
         _write_leaf(
-            primary / analysis.BASELINE_VARIANTS_DIRNAME / f"gamma_{label}",
+            primary / hit_metrics.BASELINE_VARIANTS_DIRNAME / f"gamma_{label}",
             _grid_interval_fixture(gamma),
         )
     result = analysis.run_analysis(
@@ -830,8 +831,8 @@ def test_make_all_plots_rejects_bad_formats(tmp_path: Path) -> None:
     """An empty or malformed format list is refused before any figure is drawn."""
 
     annotated = _annotated_fixture()
-    pooled = analysis.summarize_agreement(annotated, grouping=("beta",))
-    confusion = analysis.build_sign_confusion(annotated)
+    pooled = hit_metrics.summarize_agreement(annotated, grouping=("beta",))
+    confusion = hit_metrics.build_sign_confusion(annotated)
     with pytest.raises(ValueError, match="simple file extensions"):
         plots.make_all_plots(
             annotated, pooled, confusion, tmp_path, plot_formats=()
@@ -843,7 +844,7 @@ def test_run_analysis_persists_rows_and_renders_figures(tmp_path: Path) -> None:
 
     primary = _write_leaf(tmp_path / "primary", _interval_fixture())
     _write_leaf(
-        primary / analysis.BASELINE_VARIANTS_DIRNAME / "gamma_exp_beta",
+        primary / hit_metrics.BASELINE_VARIANTS_DIRNAME / "gamma_exp_beta",
         _interval_fixture(blearner_shift=0.1),
     )
     result = analysis.run_analysis(primary, tmp_path / "analysis")
