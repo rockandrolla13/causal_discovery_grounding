@@ -38,7 +38,7 @@ from causal_grounding.lp_solver_learned_naturalness import (
     estimate_target_observed_binary_quantities,
 )
 from causal_grounding.train_target_split import create_train_target_split
-from experiments import exp16_osrct_calibrated_policy as exp16
+from experiments import osrct_target_pipeline as target_pipeline
 from experiments import naturalness_comparison_data as data
 from experiments.utils import (
     build_configured_naturalness_grounder,
@@ -73,8 +73,8 @@ class ComparisonBaseConfig:
     twins_bias_covariate: str = "birmon"
     stage1_backend: str = "tabicl_v2"
     tabicl_device: str = "auto"
-    epsilons: tuple[float, ...] = exp16.Exp16Config().epsilons
-    taus: tuple[float, ...] = exp16.Exp16Config().taus
+    epsilons: tuple[float, ...] = target_pipeline.Exp16Config().epsilons
+    taus: tuple[float, ...] = target_pipeline.Exp16Config().taus
     min_cell_count: int = 20
     max_fit_rows: int = 5000
     lp_posterior_samples: int = 250
@@ -329,9 +329,9 @@ def posterior_bounds(samples: pd.DataFrame, baseline: pd.DataFrame,
     primary["procedure"] = "all_requested_draw_endpoint_mean_with_manski_fallback"
     return primary, draws
 
-def naturalness_config(config: ComparisonBaseConfig, covariates: Sequence[str], seed: int) -> exp16.Exp16Config:
+def naturalness_config(config: ComparisonBaseConfig, covariates: Sequence[str], seed: int) -> target_pipeline.Exp16Config:
     """Adapt the comparison settings to the Exp16 inference APIs."""
-    return exp16.Exp16Config(
+    return target_pipeline.Exp16Config(
         covariates=tuple(covariates), naturalness_covariates=tuple(covariates),
         lp_probability_covariates=tuple(covariates), seed=seed,
         epsilons=config.epsilons, taus=config.taus, min_cell_count=config.min_cell_count,
@@ -378,14 +378,14 @@ def fit_naturalness(training: Mapping[str, pd.DataFrame], target_idle: pd.DataFr
         model_covariates=covariates, min_count=config.min_cell_count,
         probability_backend=config.stage1_backend,
         probability_model_kwargs=build_lp_probability_model_kwargs(inference, config.stage1_backend))
-    candidates = exp16._policy_candidates(grounder, target_idle, inference, trigger_quantities=observed)
-    choices = exp16.select_policy_choices(candidates, len(covariates), mode="all_triggered")
+    candidates = target_pipeline.build_policy_candidates(grounder, target_idle, inference, trigger_quantities=observed)
+    choices = target_pipeline.select_policy_choices(candidates, len(covariates), mode="all_triggered")
     atomic_write_parquet(candidates, output / "target_candidates.parquet")
     atomic_write_parquet(choices, output / "selected_choices.parquet")
     LOGGER.info("Naturalness full LP choices=%s posterior draws=%s", len(choices), config.lp_posterior_samples)
-    direct = exp16.solve_choices_lp(target_idle, choices, inference, observed_quantities=observed)
+    direct = target_pipeline.solve_choices_lp(target_idle, choices, inference, observed_quantities=observed)
     atomic_write_parquet(_complete_bounds(direct, baseline, covariates), output / "naturalness_direct.parquet")
-    tolerances, samples, conditional = exp16.solve_choices_lp_posterior_samples(
+    tolerances, samples, conditional = target_pipeline.solve_choices_lp_posterior_samples(
         target_idle, choices, grounder, inference, random_seed=seed, observed_quantities=observed)
     atomic_write_parquet(tolerances, output / "tolerance_draws.parquet")
     atomic_write_parquet(samples, output / "lp_draws_raw.parquet")
@@ -966,6 +966,7 @@ def _fingerprint(config: ComparisonConfig) -> tuple[str, dict[str, Any]]:
     sources = [Path(__file__), repo / "experiments/naturalness_comparison_data.py",
                repo / "experiments/benchmarks.py", repo / "experiments/utils.py",
                repo / "experiments/exp16_osrct_calibrated_policy.py",
+               repo / "experiments/osrct_target_pipeline.py",
                repo / "experiments/exp18_cb_meta_learner_comparison.py"]
     sources.extend(sorted((repo / "causal_grounding").rglob("*.py")))
     payload = dict(config=settings, blearner_commit=BLEARNER_COMMIT,

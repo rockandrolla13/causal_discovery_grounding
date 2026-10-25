@@ -61,7 +61,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from causal_grounding.naturalness_grounder import SUPPORTED_GP_FEATURE_MODES
-from experiments.exp16_osrct_calibrated_policy import (
+from experiments.osrct_target_pipeline import (
     DEFAULT_EXP16_STUDIES,
     Exp16Config,
 )

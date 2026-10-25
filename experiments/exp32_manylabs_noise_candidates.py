@@ -43,7 +43,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from causal_grounding.paper_grids import floor_taus
 from experiments.benchmarks import atomic_write_parquet, format_beta
-from experiments.exp16_osrct_calibrated_policy import Exp16Config, run_one_target
+from experiments.osrct_target_pipeline import Exp16Config, run_one_target
 from experiments.exp25_osrct_mc_baseline_comparison import (
     Exp25Config,
     _exp16_config_for_replication,

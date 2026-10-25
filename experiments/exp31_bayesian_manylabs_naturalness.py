@@ -71,7 +71,7 @@ from causal_grounding.naturalness_statistics import safe_sorted  # noqa: E402
 from causal_grounding.paper_grids import PAPER_BETAS  # noqa: E402
 from causal_grounding.predictors import TABICL_V2_CLASSIFIER_CHECKPOINT  # noqa: E402
 from causal_grounding.train_target_split import create_train_target_split  # noqa: E402
-from experiments.exp16_osrct_calibrated_policy import Exp16Config, _split_site_regimes  # noqa: E402
+from experiments.osrct_target_pipeline import Exp16Config, split_site_regimes  # noqa: E402
 from experiments.osrct_data_utils import load_prepared_data  # noqa: E402
 from experiments.utils import write_run_manifest  # noqa: E402
 
@@ -291,6 +291,7 @@ SOURCE_FILES = (
     "causal_grounding/loaders/covariates.py",
     "causal_grounding/loaders/cohort.py",
     "experiments/exp16_osrct_calibrated_policy.py",
+    "experiments/osrct_target_pipeline.py",
     "experiments/exp25_osrct_mc_baseline_comparison.py",
     "experiments/osrct_data_utils.py",
     "experiments/utils.py",
@@ -1025,7 +1026,7 @@ def _loader_config(key: ConditionKey, prepared_root: Path, rct_path: Path) -> Ex
     """Return the Exp16 loading configuration Exp25 uses, for one condition.
 
     ``disjoint_validation_ids`` stays at Exp25's ``False``, so
-    :func:`_split_site_regimes` returns the full target RCT as the reference.
+    :func:`split_site_regimes` returns the full target RCT as the reference.
     """
 
     return Exp16Config(
@@ -1088,7 +1089,7 @@ def load_condition_data(key: ConditionKey, prepared_root: Path, rct_path: Path) 
 
     Follows Exp16's ``run_one_target`` under Exp25's configuration: the complete-case rule (observed ``resp_sex``)
     and binary encodings of :func:`load_prepared_data`, the source/target split of
-    :func:`create_train_target_split`, and every target randomized row as the reference (:func:`_split_site_regimes`).
+    :func:`create_train_target_split`, and every target randomized row as the reference (:func:`split_site_regimes`).
 
     Args:
         key: The condition.
@@ -1118,7 +1119,7 @@ def load_condition_data(key: ConditionKey, prepared_root: Path, rct_path: Path) 
         ignore_index=True,
         sort=False,
     )
-    _, reference_rows, removed = _split_site_regimes(target_combined, config)
+    _, reference_rows, removed = split_site_regimes(target_combined, config)
     if removed:
         raise AssertionError("Exp25's reference convention keeps every target randomized row")
     source_sites = sorted(str(site) for site in source_training)
