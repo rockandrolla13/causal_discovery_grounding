@@ -12,3 +12,6 @@ osrct_benchmark_v1.0/data/*
 !osrct_benchmark_v1.0/data/README.md
 ManyLabs1/pre-process/Manylabs1_data.*
 ManyLabs1/pre-process/covariates_list.txt
+
+# Local agent worktrees.
+.claude/worktrees/
