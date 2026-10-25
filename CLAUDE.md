@@ -33,23 +33,26 @@ skip when it is missing, so a green run in a thin environment is not full covera
 ```bash
 ./.venv/bin/python -m pytest tests/test_causal_grounding/ -q    # the package, a few minutes
 ./.venv/bin/python -m pytest tests/test_golden_toy_example.py   # result guard, about 2 minutes
-./.venv/bin/python -m pytest -q                                 # full suite, about 25 minutes
+./.venv/bin/python -m pytest -q                                 # full suite, a few minutes idle, much longer under load
 ruff check .
 ```
 
 Run targeted test files while developing; keep the full suite for CI or a deliberate long run.
-CI (`.github/workflows/tests.yml`) runs both on every push and pull request to `main`.
+CI (`.github/workflows/tests.yml`) runs ruff, a fast job with the package tests and the result
+guards (`tests/test_golden_*.py`, `tests/test_api.py`), and the full suite on every push and
+pull request to `main`.
 
 ## Code conventions
 
 - Python 3.11+, type hints, `X | None` rather than `Optional[X]` in new code.
-- NumPy-style docstrings; scikit-learn conventions (`fit` returns `self`, fitted attributes end
+- Google-style docstrings (`Args:`, `Returns:`, `Raises:`); scikit-learn conventions (`fit` returns `self`, fitted attributes end
   in `_`) for estimator-like classes.
 - Seed every random step through an explicit `random_seed` / `numpy.random.Generator`; do not
   call the global `np.random.seed`.
-- The package never imports `experiments/`. Experiment scripts must not import each other
-  either: shared logic goes into the package or into a domain-named module under
-  `experiments/` that imports no experiment script.
+- The package never imports `experiments/`. New code must not make one experiment script
+  import another: shared logic goes into the package or into a domain-named module under
+  `experiments/` that imports no experiment script. Some existing scripts still import each
+  other. The refactor removes those imports, so do not add more.
 - Heavy optional dependencies (torch, tabicl, jax, numpyro) are imported lazily, inside the
   function that needs them, so `pip install .` works with numpy, pandas, scipy and
   scikit-learn only.

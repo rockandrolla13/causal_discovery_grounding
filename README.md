@@ -128,7 +128,7 @@ To use your own data, give every site the same discrete covariate columns, a bin
 
 - **Probability model.** `stage1_backend="empirical"` uses smoothed cell frequencies. The paper uses `"tabicl_v2"` (TabICLv2) for Stage 1 and for the target probabilities (`Naturalness(..., stage1_backend="tabicl_v2", target_backend="tabicl_v2")`). `"xgboost"` and `"hierarchical_dirichlet"` are also available.
 - **When nothing fires.** If no condition fires at the target, `model.policy_result_.status` is `"no_triggered_candidates"` and Naturalness abstains: every endpoint is `NaN` and `p_optimal` is 0. A stratum whose program has no optimal draw also has no Naturalness interval. The paper scores both cases with the Manski interval.
-- **Source sites.** In Experiment I, the paper's pipeline (`experiments/exp16_osrct_calibrated_policy.py`) holds out 9 of the 35 source sites for endpoint calibration and 11 more for policy tuning, and fits its grounder on the remaining 15. The example fits on every source.
+- **Source sites.** In Experiment I, the paper's pipeline (`experiments/exp25_osrct_mc_baseline_comparison.py`, on top of the site split in `experiments/exp16_osrct_calibrated_policy.py`) holds out 9 of the 35 source sites for endpoint calibration and 11 more for policy tuning, and fits its grounder on the remaining 15. The 9 come from Exp25's calibration settings (`calibration_fraction=0.25`, `min_calibration_sites=9`), which replace Exp16's defaults. The example fits on every source.
 
 ## Reproducing the paper
 
@@ -164,7 +164,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-The suite runs on the CPU, in about 12 minutes on 8 cores. Tests that need data not included here (the ManyLabs1 file, the pre-generated OSRCT benchmark samples) are skipped.
+The suite runs on the CPU. It takes a few minutes on an idle 16-thread machine, and much longer under load. Tests that need data not included here (the ManyLabs1 file, the pre-generated OSRCT benchmark samples) are skipped.
 
 ## Not included
 
