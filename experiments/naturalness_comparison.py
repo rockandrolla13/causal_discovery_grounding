@@ -36,6 +36,7 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from causal_grounding import balke_pearl
 from causal_grounding import naturalness_statistics as stats
 from causal_grounding.lp_solver_learned_naturalness import (
@@ -188,7 +189,7 @@ def prepare_condition(prepared: Mapping[str, Any], dataset: str, beta: float, se
     frame = pd.DataFrame(prepared["covariates"][:, [names.index(c) for c in covariates]], columns=covariates)
     frame["id"] = np.arange(len(frame))
     frame["site"] = prepared["sites"].astype(str)
-    frame["iv"], frame["dv_binary"] = treatment, outcome
+    frame[TREATMENT_COLUMN], frame[OUTCOME_COLUMN] = treatment, outcome
     fitting, evaluation, row_audits = [], {}, []
     for partition in partitions:
         site = str(partition.site)
@@ -209,7 +210,7 @@ def prepare_condition(prepared: Mapping[str, Any], dataset: str, beta: float, se
             row_audits.append(dict(site=site, regime=regime, population_rows=len(rows), fitting_rows=len(fit_rows),
                                    fitting_ids_sha256=hashlib.sha256(np.asarray(fit_rows, dtype=np.int64).tobytes()).hexdigest()))
     fitted = pd.concat(fitting, ignore_index=True)
-    assert set(fitted.columns) == set(covariates) | {"id", "site", "iv", "dv_binary", "F"}
+    assert set(fitted.columns) == set(covariates) | {"id", "site", TREATMENT_COLUMN, OUTCOME_COLUMN, "F"}
     assert not set(fitted.loc[fitted.F == "on", "id"]) & set(fitted.loc[fitted.F == "idle", "id"])
     return dict(on=fitted[fitted.F == "on"].copy(), idle=fitted[fitted.F == "idle"].copy(),
                 evaluation=evaluation, covariates=covariates, row_audit=pd.DataFrame(row_audits))
@@ -352,13 +353,13 @@ def fit_naturalness(training: Mapping[str, pd.DataFrame], target_idle: pd.DataFr
         return model
 
     grounder.stage1_backend_factory_ = logged_site_fit
-    grounder.fit(dict(training), treatment="iv", outcome="dv_binary", regime_col="F", fit_gp=False)
+    grounder.fit(dict(training), treatment=TREATMENT_COLUMN, outcome=OUTCOME_COLUMN, regime_col="F", fit_gp=False)
     atomic_write_parquet(grounder.observations_, output / "source_observations.parquet")
     LOGGER.info("Naturalness source GP fit start")
     grounder.fit_stage3_gp()
     LOGGER.info("Naturalness target probability fit start rows=%s", len(target_idle))
     observed = estimate_target_observed_binary_quantities(
-        target_idle, treatment="iv", outcome="dv_binary", covariates=covariates,
+        target_idle, treatment=TREATMENT_COLUMN, outcome=OUTCOME_COLUMN, covariates=covariates,
         model_covariates=covariates, min_count=config.min_cell_count,
         probability_backend=config.stage1_backend,
         probability_model_kwargs=build_lp_probability_model_kwargs(inference, config.stage1_backend))
@@ -615,8 +616,8 @@ def balke_pearl_bounds(target_idle: pd.DataFrame, strata: pd.DataFrame,
     """
     names = list(covariates)
     values = {c: target_idle[c].to_numpy() for c in names}
-    treat = target_idle["iv"].to_numpy().astype(int)
-    outcome = target_idle["dv_binary"].to_numpy().astype(int)
+    treat = target_idle[TREATMENT_COLUMN].to_numpy().astype(int)
+    outcome = target_idle[OUTCOME_COLUMN].to_numpy().astype(int)
 
     relevant = _relevant_candidates(target_idle, names, min_count, tau)
     per_stratum: dict[tuple[int, tuple], balke_pearl.BalkePearlInterval] = {}
@@ -698,7 +699,7 @@ def _relevant_candidates(target_idle: pd.DataFrame, names: Sequence[str],
     empirical cell frequencies rather than a fitted model.
     """
     values = {c: target_idle[c].to_numpy() for c in names}
-    treat = target_idle["iv"].to_numpy().astype(int)
+    treat = target_idle[TREATMENT_COLUMN].to_numpy().astype(int)
     kept = []
     for j, name in enumerate(names):
         rest = [c for c in names if c != name]

@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from causal_grounding.loaders.schema import MANYLABS_COVARIATES
 from experiments.backdoor_cate_error_analysis import (
     write_backdoor_cate_error_analysis_plots,
 )
@@ -53,9 +54,7 @@ EXP16_PLOT_SUMMARY_KEYS = (
     "pattern",
     "beta",
     "target_site",
-    "resp_age_bin",
-    "resp_gender_bin",
-    "resp_polideo_bin",
+    *MANYLABS_COVARIATES,
     "z_value_str",
 )
 

@@ -52,6 +52,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN  # noqa: E402
 from causal_grounding import balke_pearl  # noqa: E402
 from causal_grounding import bayesian_modular_naturalness as bayes  # noqa: E402
 from causal_grounding.bayesian_modular_naturalness import (  # noqa: E402
@@ -1079,9 +1080,9 @@ def _bayes_frame(frame: pd.DataFrame, regime: str | None = None) -> pd.DataFrame
         output["F"] = regime
     output["id"] = _participant_ids(output["id"])
     output["site"] = output["site"].astype(str)
-    for column in ("iv", "dv_binary", *COVARIATES):
+    for column in (TREATMENT_COLUMN, OUTCOME_COLUMN, *COVARIATES):
         output[column] = pd.to_numeric(output[column], errors="raise").astype(np.int8)
-    columns = ["id", "site", "F", "iv", "dv_binary", *COVARIATES] if "F" in output else ["id", "site", "iv", "dv_binary", *COVARIATES]
+    columns = ["id", "site", "F", TREATMENT_COLUMN, OUTCOME_COLUMN, *COVARIATES] if "F" in output else ["id", "site", TREATMENT_COLUMN, OUTCOME_COLUMN, *COVARIATES]
     return output[columns].reset_index(drop=True)
 
 
@@ -1257,7 +1258,7 @@ def _randomized_pair_filters(
 
     covariates = list(COVARIATES)
     randomized = sources.loc[sources.F.eq("on")]
-    counts = randomized.groupby([randomized.site.astype(str), "iv", *covariates]).size().to_dict()
+    counts = randomized.groupby([randomized.site.astype(str), TREATMENT_COLUMN, *covariates]).size().to_dict()
 
     def site_filter(site: str) -> Callable[[tuple[int, ...], tuple[int, ...]], bool]:
         """Return the filter of one site."""
@@ -2380,8 +2381,8 @@ def _predictive_site_fit(on, idle, site, support, overlap, key, device, sample_i
     z_values, n_idle_z, n_idle_xz = support
     kwargs = {**TABICL_PREDICTOR_KWARGS, "random_state": int(key.seed), "device": device}
     p_x1, p_y1, p_do = bayes._tabicl_site_probabilities(
-        on, idle, site_id=site, z_values=z_values, covariates=list(COVARIATES), treatment="iv",
-        outcome="dv_binary", regime_col="F", on_value="on", idle_value="idle", predictor_kwargs=kwargs,
+        on, idle, site_id=site, z_values=z_values, covariates=list(COVARIATES), treatment=TREATMENT_COLUMN,
+        outcome=OUTCOME_COLUMN, regime_col="F", on_value="on", idle_value="idle", predictor_kwargs=kwargs,
     )
     floor = bayes.NUMERICAL_PROBABILITY_FLOOR
     idle_xy = {}
@@ -2416,8 +2417,8 @@ def _simulate_site_rows(rows: pd.DataFrame, center: bayes.SitePMFDraw, rng: np.r
     p_x, p_y, p_do = _pmf_conditionals(center)
     if redraw_treatment:
         draw = rng.random(len(rows))
-        rows["iv"] = np.array([int(u < p_x[cell]) if ok else int(x) for u, cell, ok, x in zip(draw, z, fitted, rows.iv)])
-    x = rows.iv.astype(int).to_numpy()
+        rows[TREATMENT_COLUMN] = np.array([int(u < p_x[cell]) if ok else int(x) for u, cell, ok, x in zip(draw, z, fitted, rows[TREATMENT_COLUMN])])
+    x = rows[TREATMENT_COLUMN].astype(int).to_numpy()
     on = rows.F.eq("on").to_numpy()
     idle_ids = set(rows.loc[~on, "id"])
     in_idle = np.array([is_on and unit in idle_ids for is_on, unit in zip(on, rows["id"])])
@@ -2439,7 +2440,7 @@ def _simulate_site_rows(rows: pd.DataFrame, center: bayes.SitePMFDraw, rng: np.r
         by_unit = dict(zip(rows.loc[on, "id"], outcome[on]))
         nested = ~on & rows["id"].isin(by_unit).to_numpy()
         outcome[nested] = rows.loc[nested, "id"].map(by_unit).to_numpy()
-    rows["dv_binary"] = outcome
+    rows[OUTCOME_COLUMN] = outcome
     return rows
 
 
@@ -2449,8 +2450,8 @@ def _site_frames(rows: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, tuple,
     on = rows.loc[rows.F.eq("on")].reset_index(drop=True)
     idle = rows.loc[rows.F.eq("idle")].reset_index(drop=True)
     covariates = list(COVARIATES)
-    overlap = bayes._validate_overlap(on, idle, id_col="id", columns=["iv", "dv_binary", *covariates]) if len(on) else False
-    return on, idle, bayes._idle_support(idle, covariates, "iv"), overlap
+    overlap = bayes._validate_overlap(on, idle, id_col="id", columns=[TREATMENT_COLUMN, OUTCOME_COLUMN, *covariates]) if len(on) else False
+    return on, idle, bayes._idle_support(idle, covariates, TREATMENT_COLUMN), overlap
 
 
 def predictive_pmfs(

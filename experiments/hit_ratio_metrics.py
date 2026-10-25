@@ -21,6 +21,7 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
+from causal_grounding.loaders.schema import MANYLABS_COVARIATES
 from causal_grounding.paper_grids import PAPER_BETAS
 from experiments.interval_stats import percentile_interval
 
@@ -32,9 +33,7 @@ EXP25_KEY_COLUMNS = (
     "beta",
     "study",
     "target_site",
-    "resp_age_bin",
-    "resp_gender_bin",
-    "resp_polideo_bin",
+    *MANYLABS_COVARIATES,
 )
 EXP25_REQUIRED_COLUMNS = {
     *EXP25_KEY_COLUMNS,
