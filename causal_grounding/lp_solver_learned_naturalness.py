@@ -10,6 +10,7 @@ linear programs over ``theta_{star,x,z}`` variables.
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass
 from itertools import permutations
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
@@ -953,6 +954,7 @@ def _prepare_choices(
     probabilities, not on hidden response-type probabilities.
     """
     prepared: List[Dict[str, Any]] = []
+    n_non_finite = 0
     covariate_to_index = {name: index for index, name in enumerate(covariates)}
     for choice in choices:
         covariate_index = _choice_get(choice, "covariate_index", None)
@@ -968,6 +970,7 @@ def _prepare_choices(
         two_c = float(_choice_get(choice, "two_c", np.nan))
         two_d = float(_choice_get(choice, "two_d", np.nan))
         if not np.isfinite(two_c) or not np.isfinite(two_d):
+            n_non_finite += 1
             continue
         prepared.append({
             "covariate": covariates[covariate_index],
@@ -977,6 +980,15 @@ def _prepare_choices(
             "epsilon": _choice_get(choice, "epsilon", np.nan),
             "tau": _choice_get(choice, "tau", np.nan),
         })
+    # A dropped choice loses both of its constraints, so the bounds are looser
+    # than the selected conditions imply (or empty if every choice is dropped).
+    if n_non_finite:
+        warnings.warn(
+            f"Dropped {n_non_finite} of {len(choices)} naturalness choices with "
+            "non-finite two_c or two_d; their c and d constraints are not imposed.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
     return prepared
 
 

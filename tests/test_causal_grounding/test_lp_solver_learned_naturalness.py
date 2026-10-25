@@ -906,17 +906,19 @@ def test_nan_target_probabilities_raise_from_linprog(p_x1, q_y1, match):
 
 
 def test_nan_tolerance_choice_is_dropped_before_the_lp():
-    """A choice with NaN ``two_c`` contributes no constraints at all."""
+    """A choice with NaN ``two_c`` contributes no constraints, with a warning."""
     quantities = _direct_quantities([0.2, 0.8], q_y0=[0.2, 0.2], q_y1=[0.7, 0.7])
     nan_choice = make_choice(two_c=np.nan, two_d=0.0)
     loose = make_choice(two_c=1.0, two_d=1.0)
 
-    alone = solve_target_bounds_from_observed_binary_quantities(
-        quantities, nan_choice, return_details=True,
-    )
-    mixed = solve_target_bounds_from_observed_binary_quantities(
-        quantities, [nan_choice, loose], return_details=True,
-    )
+    with pytest.warns(RuntimeWarning, match="Dropped 1 of 1"):
+        alone = solve_target_bounds_from_observed_binary_quantities(
+            quantities, nan_choice, return_details=True,
+        )
+    with pytest.warns(RuntimeWarning, match="Dropped 1 of 2"):
+        mixed = solve_target_bounds_from_observed_binary_quantities(
+            quantities, [nan_choice, loose], return_details=True,
+        )
     loose_only = solve_target_bounds_from_observed_binary_quantities(
         quantities, loose, return_details=True,
     )
