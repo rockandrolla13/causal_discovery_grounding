@@ -42,6 +42,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from causal_grounding.paper_grids import floor_taus
+from causal_grounding.seeding import blake2b_uniform
 from experiments.benchmarks import atomic_write_parquet, format_beta
 from experiments.osrct_target_pipeline import Exp16Config, run_one_target
 from experiments.exp25_osrct_mc_baseline_comparison import (
@@ -185,11 +186,8 @@ def _participant_key(site: Any, participant: Any) -> str:
     return f"{site}|{participant}"
 
 
-def _uniform_from_key(text: str) -> float:
-    """Map a text key to a reproducible uniform draw in ``[0, 1)``."""
-
-    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest()
-    return int.from_bytes(digest, "little") / float(2**64)
+#: The BLAKE2b uniform scheme of the noise candidates; see :mod:`causal_grounding.seeding`.
+_uniform_from_key = blake2b_uniform
 
 
 def add_noise_candidates(

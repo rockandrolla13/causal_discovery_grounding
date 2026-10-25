@@ -17,23 +17,14 @@ import zlib
 import numpy as np
 import pandas as pd
 
+from causal_grounding.seeding import crc32_seed
+
 
 LOGGER = logging.getLogger(__name__)
 MISSING_CODE = 255
 
-def stable_seed(*parts: Any) -> int:
-    """Return a reproducible seed from arbitrary parts.
-
-    Python randomises string hashing per process, so ``hash("name")`` differs
-    between runs; this uses a CRC32 checksum of the parts' text instead.
-
-    Args:
-        *parts: Values whose text form identifies the draw.
-
-    Returns:
-        A seed in ``[0, 2**32)``.
-    """
-    return zlib.crc32("|".join(str(part) for part in parts).encode("utf-8"))
+#: The CRC32 seed scheme of the comparison; see :mod:`causal_grounding.seeding`.
+stable_seed = crc32_seed
 
 
 # --------------------------------------------------------------------------

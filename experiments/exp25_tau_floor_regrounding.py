@@ -34,7 +34,6 @@ import shutil
 import sys
 import tempfile
 import time
-import zlib
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
@@ -63,6 +62,7 @@ from causal_grounding.naturalness_grounder import (
     validate_gp_training_target,
 )
 from causal_grounding.paper_grids import MIN_RELEVANCE_TAU, PAPER_BETAS, floor_taus
+from causal_grounding.seeding import crc32_seed
 from causal_grounding.train_target_split import create_train_target_split
 from experiments.benchmarks import atomic_write_parquet, format_beta
 from experiments.osrct_target_pipeline import Exp16Config
@@ -295,7 +295,7 @@ def effect_shift_flips(
         raise ValueError(f"delta must lie in (-1, 1); got {delta}")
     _check_trial_ids(trial)
     half = float(delta) / 2.0
-    seed = [EFFECT_SHIFT_SEED, zlib.crc32(str(study).encode()), int(round((float(delta) + 1.0) * 1e6))]
+    seed = [EFFECT_SHIFT_SEED, crc32_seed(str(study)), int(round((float(delta) + 1.0) * 1e6))]
     return _flip_target_outcomes(trial, lambda record, arm: half if arm == 1 else -half,
                                  covariates=covariates, seed=seed)
 
@@ -332,7 +332,7 @@ def direct_effect_flips(
         raise ValueError(f"{candidate} is not one of the stratum covariates {list(covariates)}")
     _check_trial_ids(trial)
     half = float(gamma) / 2.0
-    seed = [EFFECT_SHIFT_SEED, zlib.crc32(f"{study}|{candidate}".encode()), int(round((float(gamma) + 2.0) * 1e6))]
+    seed = [EFFECT_SHIFT_SEED, crc32_seed(f"{study}|{candidate}"), int(round((float(gamma) + 2.0) * 1e6))]
     return _flip_target_outcomes(trial, lambda record, arm: half if int(record[candidate]) == 1 else -half,
                                  covariates=covariates, seed=seed, equal_arms=True)
 

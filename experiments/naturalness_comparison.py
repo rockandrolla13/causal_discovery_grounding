@@ -20,14 +20,18 @@ coverage.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+from itertools import repeat
 import logging
+import multiprocessing as mp
+import os
 from pathlib import Path
 import sys
 import time
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -37,6 +41,7 @@ from causal_grounding import naturalness_statistics as stats
 from causal_grounding.lp_solver_learned_naturalness import (
     estimate_target_observed_binary_quantities,
 )
+from causal_grounding.manski import manski_bounds
 from causal_grounding.train_target_split import create_train_target_split
 from experiments import osrct_target_pipeline as target_pipeline
 from experiments import naturalness_comparison_data as data
@@ -60,7 +65,10 @@ class ComparisonBaseConfig:
     ``max_fit_rows`` caps each site/regime's fitting rows without inspecting treatment or outcome
     (zero disables the cap), so every arm fits the same target subset; evaluation uses all target
     idle rows. Twins has a single release, so it is loaded once whatever ``dgp_seeds`` holds;
-    repetition comes from ``seeds``.
+    repetition comes from ``seeds``. ``n_jobs`` sizes the fit pools inside one condition.
+    ``grid_n_jobs`` runs that many (dataset, draw, seed, beta) grid jobs in parallel spawned
+    processes. The default of one keeps the serial loop, and any value gives the same results
+    in the same order.
     """
 
     data_root: str = "data"
@@ -79,6 +87,7 @@ class ComparisonBaseConfig:
     max_fit_rows: int = 5000
     lp_posterior_samples: int = 250
     n_jobs: int = 4
+    grid_n_jobs: int = 1
     blearner_repository: str = "/opt/BLearner" if Path("/opt/BLearner").exists() else "/tmp/BLearner"
     output_dir: str = "results/naturalness_method_comparison"
     resume: bool = False
@@ -96,7 +105,8 @@ class ComparisonBaseConfig:
             raise ValueError("betas must be finite, nonnegative, and below 700")
         if self.stage1_backend not in ("tabicl_v2", "hierarchical_dirichlet", "xgboost"):
             raise ValueError("Unsupported Stage-1 backend")
-        if self.min_cell_count < 1 or self.max_fit_rows < 0 or self.lp_posterior_samples < 1 or self.n_jobs < 1:
+        if (self.min_cell_count < 1 or self.max_fit_rows < 0 or self.lp_posterior_samples < 1
+                or self.n_jobs < 1 or self.grid_n_jobs < 1):
             raise ValueError("Support, draws, and workers must be positive; fitting cap nonnegative")
         if not self.twins_covariates or len(set(self.twins_covariates)) != len(self.twins_covariates):
             raise ValueError("twins_covariates must be nonempty and unique")
@@ -203,32 +213,6 @@ def prepare_condition(prepared: Mapping[str, Any], dataset: str, beta: float, se
     assert not set(fitted.loc[fitted.F == "on", "id"]) & set(fitted.loc[fitted.F == "idle", "id"])
     return dict(on=fitted[fitted.F == "on"].copy(), idle=fitted[fitted.F == "idle"].copy(),
                 evaluation=evaluation, covariates=covariates, row_audit=pd.DataFrame(row_audits))
-
-def manski_bounds(target_idle: pd.DataFrame, strata: pd.DataFrame,
-                  covariates: Sequence[str], min_count: int) -> pd.DataFrame:
-    """Compute unsmoothed binary Manski bounds and a shared fitting-support mask.
-
-    ``target_idle`` is the common learner subset; ``strata`` enumerates all
-    evaluation cells. Missing fitting cells receive [-1,1]. A missing treatment
-    arm is kept as unobserved mass rather than fabricated or dropped. Both arm
-    counts must meet ``min_count`` for the shared support mask.
-    """
-    records = []
-    for z in strata[list(covariates)].itertuples(index=False, name=None):
-        mask = np.logical_and.reduce([target_idle[c].to_numpy() == v for c, v in zip(covariates, z)])
-        cell = target_idle.loc[mask]
-        n = len(cell)
-        record = dict(zip(covariates, z))
-        n0, n1 = int((cell.iv == 0).sum()), int((cell.iv == 1).sum())
-        if n:
-            a0 = float(cell.loc[cell.iv == 0, "dv_binary"].sum()) / n
-            a1 = float(cell.loc[cell.iv == 1, "dv_binary"].sum()) / n
-            lower, upper = a1 - a0 - n1 / n, a1 - a0 + n0 / n
-        else:
-            lower, upper = -1., 1.
-        records.append(dict(**record, lower=lower, upper=upper, n_fit=n, n_fit_arm0=n0, n_fit_arm1=n1,
-                            common_supported=n0 >= min_count and n1 >= min_count))
-    return pd.DataFrame(records)
 
 def _complete_bounds(raw: pd.DataFrame, baseline: pd.DataFrame, covariates: Sequence[str],
                      failure: str = "missing") -> pd.DataFrame:
@@ -960,7 +944,8 @@ def _fingerprint(config: ComparisonConfig) -> tuple[str, dict[str, Any]]:
     # Deferred: experiments.benchmarks imports catenets and torch at module level.
     from experiments.benchmarks import BLEARNER_COMMIT
     settings = asdict(config)
-    for key in ("resume", "output_dir", "cluster_manifest_path"):
+    # grid_n_jobs only spreads the grid over processes; the results do not depend on it.
+    for key in ("resume", "output_dir", "cluster_manifest_path", "grid_n_jobs"):
         settings.pop(key, None)
     repo = Path(__file__).resolve().parents[1]
     sources = [Path(__file__), repo / "experiments/naturalness_comparison_data.py",
@@ -974,6 +959,173 @@ def _fingerprint(config: ComparisonConfig) -> tuple[str, dict[str, Any]]:
                    sources={str(p.relative_to(repo)): _sha256(p) for p in sources if p.exists()})
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(), payload
 
+
+
+@dataclass(frozen=True)
+class _GridJob:
+    """One (dataset, DGP draw, seed, beta) cell of the comparison grid.
+
+    Attributes:
+        prepared: Output of :func:`experiments.naturalness_comparison_data.prepare_dataset`.
+        dataset: Dataset name.
+        draw: DGP draw, ``None`` for Twins.
+        seed: Condition seed.
+        beta: Assignment strength.
+    """
+
+    prepared: Mapping[str, Any]
+    dataset: str
+    draw: int | None
+    seed: int
+    beta: float
+
+
+def _grid_jobs(config: ComparisonConfig) -> Iterator[_GridJob]:
+    """Yield the grid's (dataset, draw, seed, beta) jobs in serial order.
+
+    Each dataset draw is prepared once, just before its first job, as the serial loop did.
+
+    Args:
+        config: Experiment settings.
+
+    Yields:
+        One job per (dataset, draw, seed, beta), datasets outermost and betas innermost.
+    """
+    for dataset in config.datasets:
+        draws = (None,) if dataset == "twins_reduced" else config.dgp_seeds
+        for draw in draws:
+            root = dataset_root(config, dataset, draw)
+            prepared = data.prepare_dataset(
+                data.BUILTIN_SPECS[dataset], root,
+                n_sites=6, min_site_rows=150)
+            for seed in config.seeds:
+                for beta in config.betas:
+                    yield _GridJob(prepared, dataset, draw, seed, beta)
+
+
+def _run_grid_job(job: _GridJob, config: ComparisonConfig, output: Path
+                  ) -> Iterator[tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
+    """Fit, score and write every target condition of one grid job.
+
+    Each target writes its own leaf, so a resumed run picks up completed targets from their
+    ``completion.json``. Every random stream comes from ``stable_seed`` on the condition's
+    identifiers, so the result does not depend on which process runs the job.
+
+    Args:
+        job: The grid cell.
+        config: Experiment settings.
+        output: Output root of the run.
+
+    Yields:
+        The ``(metrics, errors)`` of each target condition, in target order.
+
+    Raises:
+        ValueError: If a requested target site is absent from the dataset.
+    """
+    # Deferred: experiments.benchmarks imports catenets and torch at module level.
+    from experiments.benchmarks import atomic_write_parquet
+    dataset, draw, seed, beta, prepared = job.dataset, job.draw, job.seed, job.beta, job.prepared
+    condition = prepare_condition(prepared, dataset, beta, seed, config)
+    targets = (sorted(condition["evaluation"], key=int)
+               if config.target_sites == ("all",) else config.target_sites)
+    for target in targets:
+        metadata = dict(experiment=config.experiment_name, dataset=dataset,
+                        dgp_seed=draw, seed=seed, beta=beta, target_site=target,
+                        stage1_backend=config.stage1_backend)
+        leaf = (output / dataset / f"dgp{draw}" / f"seed{seed}"
+                / f"beta{beta:g}" / f"target{target}")
+        complete = leaf / "completion.json"
+        if config.resume and complete.exists():
+            prior = json.loads(complete.read_text())
+            LOGGER.info("Resume completed condition %s", metadata)
+            yield prior["metrics"], prior["errors"]
+            continue
+        if target not in condition["evaluation"]:
+            raise ValueError(f"Requested target {target} absent for {dataset}")
+        leaf.mkdir(parents=True, exist_ok=True)
+        LOGGER.info("Condition start %s", metadata)
+        training, target_idle = create_train_target_split(
+            condition["idle"], condition["on"], target)
+        evaluation = condition["evaluation"][target]
+        covariates = condition["covariates"]
+        strata = (evaluation["frame"][list(covariates)].drop_duplicates()
+                  .sort_values(list(covariates)))
+        baseline = manski_bounds(target_idle, strata, covariates, config.min_cell_count)
+        atomic_write_parquet(condition["row_audit"], leaf / "row_audit.parquet")
+        _write_json(prepared["provenance"], leaf / "dataset_provenance.json")
+
+        bounds, errors, timings, diagnostic = _per_cell_bounds(
+            condition, training, target_idle, baseline, strata, evaluation,
+            covariates, target, beta, seed, config, leaf)
+        for error in errors:
+            error.update(metadata)
+
+        # Reference effects enter only here, after every fitted arm has finished.
+        truth = evaluation_strata(evaluation, covariates)
+        _write_json(diagnostic, leaf / "sensitivity_diagnostic.json")
+        metrics, scored_frames = [], []
+        for method, frame in bounds.items():
+            scored, metric = score_bounds(frame, truth, covariates, method)
+            metric.update(metadata, reference_kind=evaluation["reference_kind"],
+                          fit_seconds=timings.get(method, float("nan")), **diagnostic)
+            metrics.append(metric)
+            scored_frames.append(scored)
+        atomic_write_parquet(pd.concat(scored_frames, ignore_index=True),
+                             leaf / "bounds_scored.parquet")
+        _write_json(
+            dict(metrics=metrics, errors=errors,
+                 status="fit_failures" if errors else "complete"), complete)
+        LOGGER.info("Condition done %s fit_failures=%s", metadata, len(errors))
+        yield metrics, errors
+
+
+def _run_grid_job_to_list(job: _GridJob, config: ComparisonConfig, output: Path
+                          ) -> list[tuple[list[dict[str, Any]], list[dict[str, Any]]]]:
+    """Run :func:`_run_grid_job` to completion inside a pool worker."""
+    return list(_run_grid_job(job, config, output))
+
+
+#: Numerical-library thread caps set for the grid workers, as in :mod:`experiments.benchmarks`.
+_THREAD_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                     "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")
+
+
+def _initialize_grid_worker() -> None:
+    """Cap numerical-library threads at one inside a grid worker."""
+    for variable in _THREAD_VARIABLES:
+        os.environ[variable] = "1"
+
+
+def _run_grid_parallel(jobs: Iterable[_GridJob], config: ComparisonConfig, output: Path
+                       ) -> Iterator[list[tuple[list[dict[str, Any]], list[dict[str, Any]]]]]:
+    """Run grid jobs in ``config.grid_n_jobs`` spawned processes, yielding in serial order.
+
+    Spawned workers inherit the thread caps from the environment, which is restored once the
+    pool closes. Each worker may still start its own ``config.n_jobs`` fit pool, so the run
+    uses up to ``grid_n_jobs * n_jobs`` processes.
+
+    Args:
+        jobs: Grid jobs in serial order.
+        config: Experiment settings.
+        output: Output root of the run.
+
+    Yields:
+        Each job's per-target ``(metrics, errors)`` list, in the order of ``jobs``.
+    """
+    saved = {variable: os.environ.get(variable) for variable in _THREAD_VARIABLES}
+    _initialize_grid_worker()
+    try:
+        with ProcessPoolExecutor(max_workers=config.grid_n_jobs,
+                                 mp_context=mp.get_context("spawn"),
+                                 initializer=_initialize_grid_worker) as executor:
+            yield from executor.map(_run_grid_job_to_list, jobs,
+                                    repeat(config), repeat(output))
+    finally:
+        for variable, value in saved.items():
+            if value is None:
+                os.environ.pop(variable, None)
+            else:
+                os.environ[variable] = value
 
 
 def run_comparison(config: ComparisonConfig, argv: Sequence[str] = ()) -> pd.DataFrame:
@@ -1031,72 +1183,24 @@ def run_comparison(config: ComparisonConfig, argv: Sequence[str] = ()) -> pd.Dat
     all_metrics: list[dict[str, Any]] = []
     all_errors: list[dict[str, Any]] = []
     condition_count = 0
-    for dataset in config.datasets:
-        draws = (None,) if dataset == "twins_reduced" else config.dgp_seeds
-        for draw in draws:
-            root = dataset_root(config, dataset, draw)
-            prepared = data.prepare_dataset(
-                data.BUILTIN_SPECS[dataset], root,
-                n_sites=6, min_site_rows=150)
-            for seed in config.seeds:
-                for beta in config.betas:
-                    condition = prepare_condition(prepared, dataset, beta, seed, config)
-                    targets = (sorted(condition["evaluation"], key=int)
-                               if config.target_sites == ("all",) else config.target_sites)
-                    for target in targets:
-                        condition_count += 1
-                        metadata = dict(experiment=config.experiment_name, dataset=dataset,
-                                        dgp_seed=draw, seed=seed, beta=beta, target_site=target,
-                                        stage1_backend=config.stage1_backend)
-                        leaf = (output / dataset / f"dgp{draw}" / f"seed{seed}"
-                                / f"beta{beta:g}" / f"target{target}")
-                        complete = leaf / "completion.json"
-                        if config.resume and complete.exists():
-                            prior = json.loads(complete.read_text())
-                            all_metrics.extend(prior["metrics"])
-                            all_errors.extend(prior["errors"])
-                            LOGGER.info("Resume completed condition %s", metadata)
-                            continue
-                        if target not in condition["evaluation"]:
-                            raise ValueError(f"Requested target {target} absent for {dataset}")
-                        leaf.mkdir(parents=True, exist_ok=True)
-                        LOGGER.info("Condition %s start %s", condition_count, metadata)
-                        training, target_idle = create_train_target_split(
-                            condition["idle"], condition["on"], target)
-                        evaluation = condition["evaluation"][target]
-                        covariates = condition["covariates"]
-                        strata = (evaluation["frame"][list(covariates)].drop_duplicates()
-                                  .sort_values(list(covariates)))
-                        baseline = manski_bounds(target_idle, strata, covariates, config.min_cell_count)
-                        atomic_write_parquet(condition["row_audit"], leaf / "row_audit.parquet")
-                        _write_json(prepared["provenance"], leaf / "dataset_provenance.json")
 
-                        bounds, errors, timings, diagnostic = _per_cell_bounds(
-                            condition, training, target_idle, baseline, strata, evaluation,
-                            covariates, target, beta, seed, config, leaf)
-                        for error in errors:
-                            error.update(metadata)
+    def record(metrics: list[dict[str, Any]], errors: list[dict[str, Any]]) -> None:
+        """Append one target condition's rows and rewrite the running totals."""
+        nonlocal condition_count
+        condition_count += 1
+        all_metrics.extend(metrics)
+        all_errors.extend(errors)
+        atomic_write_parquet(pd.DataFrame(all_metrics), output / "metrics.parquet")
+        _write_json(all_errors, output / "fit_failures.json")
 
-                        # Reference effects enter only here, after every fitted arm has finished.
-                        truth = evaluation_strata(evaluation, covariates)
-                        _write_json(diagnostic, leaf / "sensitivity_diagnostic.json")
-                        metrics, scored_frames = [], []
-                        for method, frame in bounds.items():
-                            scored, metric = score_bounds(frame, truth, covariates, method)
-                            metric.update(metadata, reference_kind=evaluation["reference_kind"],
-                                          fit_seconds=timings.get(method, float("nan")), **diagnostic)
-                            metrics.append(metric)
-                            scored_frames.append(scored)
-                        atomic_write_parquet(pd.concat(scored_frames, ignore_index=True),
-                                             leaf / "bounds_scored.parquet")
-                        _write_json(
-                            dict(metrics=metrics, errors=errors,
-                                 status="fit_failures" if errors else "complete"), complete)
-                        all_metrics.extend(metrics)
-                        all_errors.extend(errors)
-                        LOGGER.info("Condition %s done fit_failures=%s", condition_count, len(errors))
-                        atomic_write_parquet(pd.DataFrame(all_metrics), output / "metrics.parquet")
-                        _write_json(all_errors, output / "fit_failures.json")
+    if config.grid_n_jobs == 1:
+        for job in _grid_jobs(config):
+            for metrics, errors in _run_grid_job(job, config, output):
+                record(metrics, errors)
+    else:
+        for target_results in _run_grid_parallel(_grid_jobs(config), config, output):
+            for metrics, errors in target_results:
+                record(metrics, errors)
 
     result = pd.DataFrame(all_metrics)
     atomic_write_parquet(result, output / "metrics.parquet")
@@ -1128,7 +1232,8 @@ def build_parser(defaults: ComparisonConfig) -> argparse.ArgumentParser:
                         ("betas", float), ("epsilons", float), ("taus", float)):
         parser.add_argument("--" + name.replace("_", "-"), nargs="+", type=dtype,
                             default=getattr(defaults, name))
-    for name in ("min_cell_count", "max_fit_rows", "lp_posterior_samples", "n_jobs"):
+    for name in ("min_cell_count", "max_fit_rows", "lp_posterior_samples", "n_jobs",
+                 "grid_n_jobs"):
         parser.add_argument("--" + name.replace("_", "-"), type=int, default=getattr(defaults, name))
     parser.add_argument("--stage1-backend", choices=("tabicl_v2", "hierarchical_dirichlet", "xgboost"),
                         default=defaults.stage1_backend)

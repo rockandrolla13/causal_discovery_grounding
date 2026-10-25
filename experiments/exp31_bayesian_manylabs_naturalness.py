@@ -70,6 +70,7 @@ from causal_grounding.bayesian_modular_naturalness import (  # noqa: E402
 from causal_grounding.naturalness_statistics import safe_sorted  # noqa: E402
 from causal_grounding.paper_grids import PAPER_BETAS  # noqa: E402
 from causal_grounding.predictors import TABICL_V2_CLASSIFIER_CHECKPOINT  # noqa: E402
+from causal_grounding.seeding import sha256_seed  # noqa: E402
 from causal_grounding.train_target_split import create_train_target_split  # noqa: E402
 from experiments.osrct_target_pipeline import Exp16Config, split_site_regimes  # noqa: E402
 from experiments.osrct_data_utils import load_prepared_data  # noqa: E402
@@ -779,7 +780,7 @@ def _stream_seed(key: ConditionKey, *parts: Any) -> int:
     Seeds exclude the arm, so arms share common random numbers and read the same PMF draws of a condition.
     """
 
-    return bayes._stable_seed(EXPERIMENT_NAME, key.study, key.pattern, _format_beta(key.beta), key.seed, *parts)
+    return sha256_seed(EXPERIMENT_NAME, key.study, key.pattern, _format_beta(key.beta), key.seed, *parts)
 
 
 # --- Provenance -----------------------------------------------------------------
@@ -1334,7 +1335,7 @@ def _surface_diagnostic_row(
         "candidate": posterior.candidate,
         "tolerance_kind": posterior.tolerance_kind,
         "root_seed": int(root_seed),
-        "nuts_seed": int(bayes._stable_seed(root_seed, posterior.imputation_id, posterior.candidate, posterior.tolerance_kind, attempt)),
+        "nuts_seed": int(sha256_seed(root_seed, posterior.imputation_id, posterior.candidate, posterior.tolerance_kind, attempt)),
         **{key: value for key, value in diagnostics.items() if not isinstance(value, (dict, list))},
         "excluded": False,
     }
@@ -1427,7 +1428,7 @@ def fit_surface_mixture(
                 rows.append({
                     "imputation_index": int(imputation_index),
                     "root_seed": int(root_seed),
-                    "nuts_seed": int(bayes._stable_seed(root_seed, failure["imputation_id"], failure["candidate"],
+                    "nuts_seed": int(sha256_seed(root_seed, failure["imputation_id"], failure["candidate"],
                                                         failure["tolerance_kind"], failure.get("attempt", "second_retry"))),
                     **{name: value for name, value in failure.items() if not isinstance(value, (dict, list))},
                     "excluded": True,
@@ -2495,7 +2496,7 @@ def predictive_pmfs(
     def draw(site, index):
         """Return one predictive draw of one site."""
 
-        rng = np.random.default_rng(bayes._stable_seed(seed, site, index))
+        rng = np.random.default_rng(sha256_seed(seed, site, index))
         simulated = _simulate_site_rows(sites[site], centers[site], rng, redraw_treatment=site == TARGET_SITE)
         _, _, support, overlap = frames[site]
         sim_on = simulated.loc[simulated.F.eq("on")].reset_index(drop=True)
