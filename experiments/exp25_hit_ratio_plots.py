@@ -42,6 +42,7 @@ from experiments.exp25_hit_ratio_analysis import (
     common_support_frontier,
     run_analysis,
 )
+from experiments.interval_stats import WILSON_Z, wilson_interval  # noqa: F401  (re-exported)
 
 
 NATURALNESS_MODEL = "naturalness"
@@ -190,7 +191,6 @@ PAIR_OUTCOME_COLORS = {
     "competitor_only": "tab:orange",
     "neither": "0.78",
 }
-WILSON_Z = 1.959963984540054
 # Shared legends follow the Exp16 convention: across the top of the figure,
 # wrapped into two rows. Figures carry no title.
 LEGEND_ROW_COUNT = 2
@@ -411,45 +411,6 @@ def model_marker(model: str, models: Sequence[str]) -> str:
     index = unknown.index(name) if name in unknown else 0
     return FALLBACK_MARKERS[index % len(FALLBACK_MARKERS)]
 
-
-def wilson_interval(
-    successes: Sequence[float] | np.ndarray,
-    total: Sequence[float] | np.ndarray,
-    *,
-    z: float = WILSON_Z,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Compute Wilson score intervals for binomial proportions.
-
-    Unlike the Wald interval, it stays within the unit range for proportions near
-    zero or one.
-
-    Args:
-        successes: Success counts.
-        total: Trial counts. Zero-count entries yield missing bounds.
-        z: Normal quantile; the default gives a 95% interval.
-
-    Returns:
-        Lower and upper bounds, clipped to ``[0, 1]``.
-    """
-
-    counts = np.asarray(total, dtype=float)
-    hits = np.asarray(successes, dtype=float)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        proportion = hits / counts
-        denominator = 1.0 + (z**2) / counts
-        centre = (proportion + (z**2) / (2.0 * counts)) / denominator
-        half = (
-            z
-            * np.sqrt(
-                proportion * (1.0 - proportion) / counts
-                + (z**2) / (4.0 * counts**2)
-            )
-            / denominator
-        )
-    valid = counts > 0
-    lower = np.where(valid, np.clip(centre - half, 0.0, 1.0), np.nan)
-    upper = np.where(valid, np.clip(centre + half, 0.0, 1.0), np.nan)
-    return lower, upper
 
 def build_paired_outcomes(annotated: pd.DataFrame) -> pd.DataFrame:
     """Pair every competitor model against Naturalness on identical strata.

@@ -48,6 +48,7 @@ from experiments.exp25_osrct_mc_baseline_comparison import (
     Exp25Config,
     _exp16_config_for_replication,
 )
+from experiments.interval_stats import wilson_interval
 from experiments.osrct_data_utils import iter_base_configs, load_prepared_data
 from experiments.utils import json_default, write_run_manifest
 
@@ -149,6 +150,14 @@ class Exp32Config:
             np.isfinite(float(self.tau_floor)) and float(self.tau_floor) >= 0.0
         ):
             raise ValueError("tau_floor must be finite and nonnegative")
+
+
+def floor_taus(taus: Sequence[float], floor: float) -> tuple[float, ...]:
+    """Return the tau grid values at or above ``floor``."""
+    kept = tuple(float(t) for t in taus if float(t) >= float(floor) - 1e-12)
+    if not kept:
+        raise ValueError(f"No tau value is at or above floor {floor}")
+    return kept
 
 
 def noise_candidate_names(n_noise: int) -> tuple[str, ...]:
@@ -589,9 +598,6 @@ def run_experiment(config: Exp32Config) -> dict[str, Any]:
             output_dir=root / f"replication={replication:03d}",
         )
         if config.tau_floor is not None:
-            # Local import: the regrounding module imports this one at load time.
-            from experiments.exp25_tau_floor_regrounding import floor_taus
-
             replication_config = replace(
                 replication_config,
                 taus=floor_taus(replication_config.taus, float(config.tau_floor)),
@@ -1033,7 +1039,6 @@ def ablation_metrics(
         The metric tables by name and the root's tau floor.
     """
 
-    from experiments.exp25_hit_ratio_plots import wilson_interval
 
     tau_floor = _root_tau_floor(output_dir)
     summary = summarize_results(output_dir, store, study=study, beta=beta, tau_floor=tau_floor, write=False)
@@ -1240,7 +1245,6 @@ def analyze_grid(parent: Path, destination: Path) -> dict[str, pd.DataFrame]:
         ValueError: If a root has no tau floor or the roots use different floors.
     """
 
-    from experiments.exp25_hit_ratio_plots import wilson_interval
     from experiments.exp31_bayesian_manylabs_naturalness import _markdown_table
 
     roots, stacked = [], {}
