@@ -59,6 +59,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from causal_grounding import (  # noqa: E402
+    PAPER_EPSILONS,
+    PAPER_TAUS,
     NaturalnessGrid,
     NaturalnessGrounder,
     TargetNaturalnessPolicy,
@@ -70,8 +72,8 @@ from causal_grounding.balke_pearl import balke_pearl_interval  # noqa: E402
 COVARIATES = ["Z1", "Z2"]
 #: Naturalness thresholds ``epsilon`` and the relevance grid ``tau >= 0.075``
 #: of the paper's experiments.
-EPSILONS = [0.01, 0.025, 0.05, 0.075, 0.10, 0.15, 0.20, 0.50]
-TAUS = [0.075, 0.10, 0.15, 0.20, 0.30]
+EPSILONS = list(PAPER_EPSILONS)
+TAUS = list(PAPER_TAUS)
 
 
 def _treatment_probability(z1: np.ndarray, z2: np.ndarray, u: np.ndarray) -> np.ndarray:
