@@ -105,6 +105,10 @@ GP_TARGET_SCALE_TILDE = "tilde"
 SUPPORTED_GP_TARGET_SCALES = (GP_TARGET_SCALE_NOTE, GP_TARGET_SCALE_TILDE)
 _GP_TARGET_SCALE_FACTORS = {GP_TARGET_SCALE_NOTE: 1.0, GP_TARGET_SCALE_TILDE: 2.0}
 
+#: Upper end of the note-scale c/d tolerance range ``[0, 0.5]`` that clipped
+#: GP predictions and draws are restricted to before they reach the LP.
+GP_NOTE_SCALE_TOLERANCE_CAP = 0.5
+
 
 def validate_gp_training_target(target: str) -> str:
     """Return a supported Stage-3 GP training target or raise ``ValueError``."""
@@ -2068,8 +2072,8 @@ class NaturalnessGrounder:
         )
 
         if clip:
-            c_samples = np.clip(c_samples, 0.0, 0.5)
-            d_samples = np.clip(d_samples, 0.0, 0.5)
+            c_samples = np.clip(c_samples, 0.0, GP_NOTE_SCALE_TOLERANCE_CAP)
+            d_samples = np.clip(d_samples, 0.0, GP_NOTE_SCALE_TOLERANCE_CAP)
 
         records: List[Dict[str, Any]] = []
         base_records = prepared[base_columns].to_dict("records")
@@ -2187,8 +2191,8 @@ class NaturalnessGrounder:
         c_upper = self.c_surface_.to_probability(c_mean + critical_value * c_std)
         d_upper = self.d_surface_.to_probability(d_mean + critical_value * d_std)
         if clip:
-            c_upper = np.clip(c_upper, 0.0, 0.5)
-            d_upper = np.clip(d_upper, 0.0, 0.5)
+            c_upper = np.clip(c_upper, 0.0, GP_NOTE_SCALE_TOLERANCE_CAP)
+            d_upper = np.clip(d_upper, 0.0, GP_NOTE_SCALE_TOLERANCE_CAP)
 
         source = f"gp_simultaneous_upper_{confidence_level:.2f}"
         family_size = int(2 * len(prepared))
@@ -2462,7 +2466,7 @@ class NaturalnessGrounder:
         """Keep finite c/d tolerance predictions in their note-scale range."""
         if np.isnan(value):
             return float(value)
-        return float(np.clip(value, 0.0, 0.5))
+        return float(np.clip(value, 0.0, GP_NOTE_SCALE_TOLERANCE_CAP))
 
     def _get_z_minus_values(self, site_data: pd.DataFrame, j: int) -> List[Tuple[Any, ...]]:
         """Enumerate supported observed values of ``Z_-j`` in candidate j's state."""
