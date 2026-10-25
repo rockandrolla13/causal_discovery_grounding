@@ -23,18 +23,12 @@ RTOL = 1e-6
 ATOL = 1e-9
 
 
-def _round_trip(frame: pd.DataFrame) -> pd.DataFrame:
-    """Return the frame as it reads back from the snapshot's CSV format."""
-    path = GOLDEN_DIR / "_round_trip.csv"
-    try:
-        frame.to_csv(path, index=False, float_format="%.10g")
-        return pd.read_csv(path)
-    finally:
-        path.unlink(missing_ok=True)
+def test_toy_example_matches_golden_snapshot(golden_round_trip):
+    """Bounds and fired conditions equal the snapshot, to float tolerance.
 
-
-def test_toy_example_matches_golden_snapshot():
-    """Bounds and fired conditions equal the snapshot, to float tolerance."""
+    ``golden_round_trip`` (tests/conftest.py) writes its CSV into pytest's
+    ``tmp_path``, never into ``tests/golden``.
+    """
     sources, target, _ = simulate_toy_data(seed=0)
     bounds, conditions = naturalness_bounds(sources, target, n_draws=100, seed=0)
 
@@ -44,5 +38,5 @@ def test_toy_example_matches_golden_snapshot():
     ]:
         expected = pd.read_csv(GOLDEN_DIR / name)
         pd.testing.assert_frame_equal(
-            _round_trip(frame), expected, check_exact=False, rtol=RTOL, atol=ATOL
+            golden_round_trip(frame), expected, check_exact=False, rtol=RTOL, atol=ATOL
         )

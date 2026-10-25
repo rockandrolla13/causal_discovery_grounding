@@ -1,0 +1,2 @@
+beta,endpoint_calibration_performed,fit_gp,lp_intervention_diagnostics_computed,lp_probability_backend,pattern,policy_tuning_performed,rct_min_arm_count,stage1_backend,study,target_policy_confidence_level,target_policy_uncertainty,target_site,target_trigger_probability_backend
+1,True,True,True,hierarchical_dirichlet_draws,p,False,5,hierarchical_dirichlet,s,0.95,posterior_mean,pi,hierarchical_dirichlet
