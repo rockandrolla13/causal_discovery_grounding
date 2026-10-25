@@ -65,7 +65,7 @@ from causal_grounding import (  # noqa: E402
     NaturalnessGrounder,
     TargetNaturalnessPolicy,
     estimate_target_observed_binary_quantities,
-    solve_target_bounds_from_observed_binary_quantities,
+    posterior_target_bounds,
 )
 from causal_grounding.balke_pearl import balke_pearl_interval  # noqa: E402
 
@@ -220,27 +220,7 @@ def naturalness_bounds(
 
     conditions = policy.to_frame(selected_only=True)
     draws = grounder.sample_tolerances(conditions, n_samples=n_draws, random_seed=seed)
-    solved = pd.concat(
-        [
-            solve_target_bounds_from_observed_binary_quantities(
-                quantities,
-                draw,
-                return_details=True,
-                include_intervention_diagnostics=False,
-            )
-            for _, draw in draws.groupby("sample_id")
-        ],
-        ignore_index=True,
-    )
-    solved["optimal"] = solved["status"].eq("optimal")
-    summary = solved.groupby(COVARIATES).agg(p_optimal=("optimal", "mean")).reset_index()
-    endpoints = (
-        solved[solved["optimal"]].groupby(COVARIATES)[["lower", "upper"]].mean().reset_index()
-    )
-    bounds = strata.merge(summary, on=COVARIATES, how="left").merge(
-        endpoints, on=COVARIATES, how="left"
-    )
-    return bounds[[*COVARIATES, "lower", "upper", "p_optimal"]], conditions
+    return posterior_target_bounds(quantities, draws, COVARIATES), conditions
 
 
 def reference_bounds(target: pd.DataFrame) -> pd.DataFrame:

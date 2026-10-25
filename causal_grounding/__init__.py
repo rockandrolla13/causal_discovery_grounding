@@ -15,6 +15,8 @@ Modules:
     naturalness_target_policy - The conditions that fire at the target
         (TargetNaturalnessPolicy)
     lp_solver_learned_naturalness - The target linear program
+    target_bounds - The target program over tolerance draws
+        (posterior_target_bounds)
     bayesian_modular_naturalness - The cut-Bayesian pipeline of Experiment III
     predictors - Probability models: empirical, XGBoost, TabICLv2
     balke_pearl - Sharp Balke-Pearl bounds, the comparator
@@ -106,6 +108,7 @@ from .lp_solver_learned_naturalness import (
     solve_target_bounds_from_observed_binary_quantities,
     solve_target_weighted_cate_bounds_from_observed_binary_quantities,
 )
+from .target_bounds import posterior_target_bounds
 
 from .bayesian_modular_naturalness import (
     RandomIdentifiedSetResult,
@@ -171,6 +174,7 @@ __all__ = [
     'TargetObservedBinaryQuantities',
     'estimate_target_observed_binary_quantities',
     'solve_target_bounds_from_observed_binary_quantities',
+    'posterior_target_bounds',
     'solve_target_weighted_cate_bounds_from_observed_binary_quantities',
 
     # Modular/cut-Bayesian Naturalness
