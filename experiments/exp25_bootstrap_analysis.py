@@ -37,7 +37,10 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
-from experiments.exp25_hit_ratio_analysis import (
+from experiments.hit_ratio_metrics import (
+    DEFAULT_BOOTSTRAP_REPLICATES,
+    DEFAULT_BOOTSTRAP_SEED,
+    DEFAULT_CONFIDENCE_LEVEL,
     SIGN_COUNT_COLUMNS,
     SIGN_METRIC_COLUMNS,
     annotate_reference_agreement,
@@ -49,9 +52,6 @@ from experiments.exp25_hit_ratio_analysis import (
 from experiments.interval_stats import percentile_interval
 
 NATURALNESS_MODEL = "naturalness"
-DEFAULT_BOOTSTRAP_REPLICATES = 2000
-DEFAULT_CONFIDENCE_LEVEL = 0.95
-DEFAULT_BOOTSTRAP_SEED = 20260808
 METRIC_BOOTSTRAP_FILENAME = "exp25_sign_metric_bootstrap.csv"
 CONTRAST_BOOTSTRAP_FILENAME = "exp25_sign_metric_contrasts.csv"
 

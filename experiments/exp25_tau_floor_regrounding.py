@@ -70,10 +70,10 @@ from experiments.exp25_osrct_mc_baseline_comparison import (
     Exp25Config,
     _exp16_config_for_replication,
 )
-from experiments.exp32_manylabs_noise_candidates import (
-    _parquet_safe,
+from experiments.mc_store import (
     exp25_target_index,
     load_exp25_store_config,
+    parquet_safe as _parquet_safe,
 )
 from experiments.osrct_data_utils import load_prepared_data
 from experiments.utils import (
