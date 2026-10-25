@@ -46,7 +46,11 @@ from experiments.exp25_hit_ratio_analysis import (
     sign_confusion_matrix,
     sign_metrics_from_matrix,
 )
+from experiments.interval_stats import percentile_interval
 
+
+# Kept under its old private name for external importers.
+_percentile_interval = percentile_interval
 
 NATURALNESS_MODEL = "naturalness"
 DEFAULT_BOOTSTRAP_REPLICATES = 2000
@@ -108,22 +112,6 @@ def replication_confusion_matrices(
             continue
         matrices[position] = sign_confusion_matrix(frame)
     return matrices
-
-
-def _percentile_interval(
-    draws: np.ndarray,
-    confidence_level: float,
-) -> tuple[float, float]:
-    """Return the central percentile interval of one bootstrap draw vector."""
-
-    finite = draws[np.isfinite(draws)]
-    if finite.size == 0:
-        return float("nan"), float("nan")
-    alpha = (1.0 - confidence_level) / 2.0
-    return (
-        float(np.quantile(finite, alpha)),
-        float(np.quantile(finite, 1.0 - alpha)),
-    )
 
 
 def bootstrap_sign_metrics(
@@ -191,7 +179,7 @@ def bootstrap_sign_metrics(
             draws_by_model[str(model)] = draws
             observed_by_model[str(model)] = observed
             for metric in (*SIGN_COUNT_COLUMNS, *SIGN_METRIC_COLUMNS):
-                lower, upper = _percentile_interval(
+                lower, upper = percentile_interval(
                     np.asarray(draws[metric], dtype=float), confidence_level
                 )
                 metric_values = np.asarray(draws[metric], dtype=float)
@@ -225,7 +213,7 @@ def bootstrap_sign_metrics(
                 difference = np.asarray(
                     reference[metric], dtype=float
                 ) - np.asarray(draws[metric], dtype=float)
-                lower, upper = _percentile_interval(difference, confidence_level)
+                lower, upper = percentile_interval(difference, confidence_level)
                 finite = difference[np.isfinite(difference)]
                 contrast_rows.append(
                     {

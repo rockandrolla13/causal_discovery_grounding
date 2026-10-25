@@ -8,6 +8,7 @@ sites that hold both a randomized trial and observational data. Follows Silva's
 "Causal Discovery Grounding and the Naturalness Assumption".
 
 Modules:
+    api - The short entry point (Naturalness)
     naturalness_grounder - Stages 1-3 on the sources: triggers, tolerances and
         their Gaussian-process surfaces (NaturalnessGrounder)
     naturalness_statistics - Support and trigger statistics
@@ -22,11 +23,11 @@ Modules:
     loaders - Raw-data loading of the ManyLabs1 trials and OSRCT samples
 
 Example:
-    from causal_grounding import NaturalnessGrid, NaturalnessGrounder
+    from causal_grounding import Naturalness
 
-    grid = NaturalnessGrid(epsilons=[0.05, 0.10], taus=[0.10, 0.20], covariates=['Z1', 'Z2'])
-    grounder = NaturalnessGrounder(grid, stage1_backend='empirical')
-    grounder.fit(sources, treatment='X', outcome='Y', regime_col='F')
+    model = Naturalness(covariates=['Z1', 'Z2'], n_draws=1000, random_state=0)
+    model.fit(sources)                  # {site: rows} with columns Z1, Z2, X, Y, F
+    bounds = model.get_bounds(target)   # Z1, Z2, lower, upper, p_optimal
 
 examples/toy_naturalness.py runs the whole pipeline on simulated data.
 """
@@ -120,7 +121,14 @@ from .bayesian_modular_naturalness import (
     score_random_sets_against_rct,
 )
 
+from .api import PAPER_EPSILONS, PAPER_TAUS, Naturalness
+
 __all__ = [
+    # Short entry point
+    'Naturalness',
+    'PAPER_EPSILONS',
+    'PAPER_TAUS',
+
     # Prediction models
     'BasePredictorModel',
     'EmpiricalPredictor',

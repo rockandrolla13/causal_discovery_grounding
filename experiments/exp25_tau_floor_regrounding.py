@@ -72,6 +72,7 @@ from experiments.exp25_osrct_mc_baseline_comparison import (
 from experiments.exp32_manylabs_noise_candidates import (
     _parquet_safe,
     exp25_target_index,
+    floor_taus,
     load_exp25_store_config,
 )
 from experiments.osrct_data_utils import load_prepared_data
@@ -566,14 +567,6 @@ def compute_target_tables(target_idle: pd.DataFrame, config: Exp16Config) -> dic
             probability_model_kwargs=build_lp_probability_model_kwargs(config, backend),
         )
     return {"trigger": trigger, "lp": lp}
-
-
-def floor_taus(taus: Sequence[float], floor: float) -> tuple[float, ...]:
-    """Return the tau grid values at or above ``floor``."""
-    kept = tuple(float(t) for t in taus if float(t) >= float(floor) - 1e-12)
-    if not kept:
-        raise ValueError(f"No tau value is at or above floor {floor}")
-    return kept
 
 
 def admissible_choices(choices: pd.DataFrame) -> pd.DataFrame:

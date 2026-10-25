@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -232,6 +233,15 @@ def test_no_trigger_is_manski_fallback_not_failure() -> None:
     assert 0.0 <= metrics["rct_reference_membership"] <= 1.0
     assert 0.0 <= metrics["rct_reference_95_interval_outer_containment_mass"] <= 1.0
     assert isinstance(metrics["ate_reference_95_interval_outer_contained"], bool)
+
+
+def test_rct_reference_rejects_target_draw_without_mass_on_evaluation_strata() -> None:
+    """A target draw sharing no strata with the RCT cannot weight an ATE."""
+
+    target = [next(iter(item.values())) for item in draw_raw_pmfs(_target_rows(), n_draws=1, random_seed=13)]
+    disjoint: SitePMFDraw = replace(target[0], idle_z={(9, 9): 1.0})
+    with pytest.raises(ValueError, match="zero target posterior mass"):
+        draw_rct_reference_posterior(_target_rows(), [disjoint], n_draws=1, random_seed=19)
 
 
 def test_numpyro_model_enforces_hard_support_when_available() -> None:
