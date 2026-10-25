@@ -5247,7 +5247,7 @@ def width_by_beta_table(
         and ``n_conditions`` (those with a finite width).
     """
 
-    from experiments.exp25_bootstrap_analysis import (
+    from experiments.hit_ratio_metrics import (
         DEFAULT_BOOTSTRAP_REPLICATES,
         DEFAULT_BOOTSTRAP_SEED,
         DEFAULT_CONFIDENCE_LEVEL,
