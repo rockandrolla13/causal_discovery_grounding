@@ -919,19 +919,28 @@ Stage1Backend = Union[
 ]
 
 
-NATURALNESS_STAGE1_BACKENDS: Dict[str, Callable[..., BaseNaturalnessPMFModel]] = {
-    "empirical": EmpiricalSitePMFModels,
-    "xgboost": XGBoostSitePMFModels,
-    "hierarchical_dirichlet": HierarchicalDirichletSitePMFModels,
-    "tabicl_v2": TabICLv2SitePMFModels,
-}
+from collections.abc import MutableMapping  # noqa: E402
+
+from .probability_backends import Stage1BackendMapping  # noqa: E402
+
+#: Live ``name -> Stage-1 factory`` view of
+#: :mod:`causal_grounding.probability_backends`, the single backend registry.
+NATURALNESS_STAGE1_BACKENDS: MutableMapping[str, Callable[..., BaseNaturalnessPMFModel]] = (
+    Stage1BackendMapping()
+)
 
 
 def register_naturalness_stage1_backend(
     name: str,
     backend: Callable[..., BaseNaturalnessPMFModel],
 ) -> None:
-    """Register a Stage-1 PMF backend for use by name."""
+    """Register a Stage-1 PMF backend for use by name.
+
+    The name keeps any predictor and target-LP capabilities it already has in
+    :mod:`causal_grounding.probability_backends`. To add a backend for Stage 1
+    and the target LP together, call
+    :func:`~causal_grounding.probability_backends.register_probability_backend`.
+    """
     if not name:
         raise ValueError("backend name must be non-empty")
     if not callable(backend):
