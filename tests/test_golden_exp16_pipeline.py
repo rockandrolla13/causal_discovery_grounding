@@ -33,7 +33,7 @@ from causal_grounding.lp_solver_learned_naturalness import (
     estimate_target_observed_binary_quantities,
 )
 from causal_grounding.train_target_split import create_train_target_split
-from experiments.exp16_osrct_calibrated_policy import Exp16Config, run_one_target
+from experiments.osrct_target_pipeline import Exp16Config, run_one_target
 from experiments.utils import build_lp_probability_model_kwargs
 
 GOLDEN_DIR = Path(__file__).parent / "golden" / "exp16_run_one_target"

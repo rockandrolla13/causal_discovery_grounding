@@ -50,7 +50,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-import experiments.exp16_osrct_calibrated_policy as exp16
+import experiments.osrct_target_pipeline as target_pipeline
 from causal_grounding.lp_solver_learned_naturalness import (
     estimate_target_observed_binary_quantities,
 )
@@ -65,7 +65,7 @@ from causal_grounding.naturalness_grounder import (
 from causal_grounding.paper_grids import MIN_RELEVANCE_TAU, PAPER_BETAS, floor_taus
 from causal_grounding.train_target_split import create_train_target_split
 from experiments.benchmarks import atomic_write_parquet, format_beta
-from experiments.exp16_osrct_calibrated_policy import Exp16Config
+from experiments.osrct_target_pipeline import Exp16Config
 from experiments.exp25_osrct_mc_baseline_comparison import (
     Exp25Config,
     _exp16_config_for_replication,
@@ -550,10 +550,10 @@ def compute_target_tables(target_idle: pd.DataFrame, config: Exp16Config) -> dic
     Returns:
         ``{"trigger": table or None, "lp": table or None}``.
     """
-    reusable = exp16._fit_reusable_tabicl_target_quantities(target_idle, config)
+    reusable = target_pipeline.fit_reusable_tabicl_target_quantities(target_idle, config)
     if reusable is not None:
         return {"trigger": reusable, "lp": reusable}
-    trigger = exp16._estimate_target_trigger_quantities(
+    trigger = target_pipeline.estimate_target_trigger_quantities(
         target_idle, config, backend=resolve_target_trigger_probability_backend(config)
     )
     backend = resolve_lp_probability_backend(config)
@@ -581,7 +581,7 @@ def admissible_choices(choices: pd.DataFrame) -> pd.DataFrame:
 
     Args:
         choices: Selected target rows in policy order, as returned by
-            :func:`exp16.select_policy_choices`.
+            :func:`target_pipeline.select_policy_choices`.
 
     Returns:
         The admissible rows in their original order, re-finalized so that the
@@ -599,7 +599,7 @@ def admissible_choices(choices: pd.DataFrame) -> pd.DataFrame:
         strictly_better = (epsilon < epsilon[row] - 1e-12) | (tau > tau[row] + 1e-12)
         keep[row] = not (same & no_worse & strictly_better).any()
     top_k = int(choices["policy_top_k"].iloc[0]) if "policy_top_k" in choices else 1
-    return exp16._finalize_policy_choices(
+    return target_pipeline.finalize_policy_choices(
         choices.loc[keep], top_k=top_k, candidate_selection_mode="admissible_triggered",
     )
 
@@ -640,12 +640,12 @@ def reground_condition(
         config=config, observations=observations, target_idle=target_idle, tables=tables, floor=floor,
         gp_training_target=gp_training_target, gp_target_scale=gp_target_scale, target_pairs=target_pairs,
     )
-    _, _, summary = exp16.solve_choices_lp_posterior_samples(
+    _, _, summary = target_pipeline.solve_choices_lp_posterior_samples(
         target_idle, choices, grounder, floored,
         random_seed=int(config.seed + 20_000 + target_index),
         observed_quantities=tables.get("lp"),
     )
-    gp = exp16._grounder_gp_diagnostics(grounder, training_stage=f"tau_floor_{floor:g}")
+    gp = target_pipeline.grounder_gp_diagnostics(grounder, training_stage=f"tau_floor_{floor:g}")
     return {"posterior_summary": summary, "choices": choices, "gp": gp}
 
 
@@ -685,10 +685,10 @@ def ground_and_choose(
         grounder.fit_stage3_gp()
     grounder.is_fitted_ = True
 
-    candidates = exp16._policy_candidates(
+    candidates = target_pipeline.build_policy_candidates(
         grounder, target_idle, floored, trigger_quantities=tables.get("trigger")
     )
-    choices = exp16.select_policy_choices(
+    choices = target_pipeline.select_policy_choices(
         candidates,
         min(int(value) for value in floored.policy_top_k_values),
         mode=floored.candidate_selection_mode,
@@ -796,7 +796,7 @@ def ablate_condition(
     summaries = []
     for rule, two_c, two_d in rules:
         draws = int(floored.lp_posterior_samples) if rule == "prior" else 1
-        _, _, summary = exp16.solve_choices_lp_posterior_samples(
+        _, _, summary = target_pipeline.solve_choices_lp_posterior_samples(
             target_idle, choices, _RuleTolerances(grounder, rule, two_c=two_c, two_d=two_d),
             replace(floored, lp_posterior_samples=draws), random_seed=seed,
             observed_quantities=tables.get("lp"),
@@ -912,7 +912,7 @@ def shifted_target_outputs(
     if not idle[key].reset_index(drop=True).astype(int).equals(target_idle[key].reset_index(drop=True).astype(int)):
         raise ValueError(f"{condition.label}: the tables' target rows are not the rows modified by "
                          f"effect_shift={effect_shift}, direct_effect={direct_effect}")
-    reference = exp16.build_empirical_rct_cate_labels(
+    reference = target_pipeline.build_empirical_rct_cate_labels(
         trial, covariates=config.covariates, min_arm_count=int(config.rct_min_arm_count),
     )
     published = published_identities(identities_root, condition)

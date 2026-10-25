@@ -19,6 +19,7 @@ pytest.importorskip("sklearn_quantile")
 import experiments.exp16_osrct_calibrated_policy as exp16
 import experiments.exp18_cb_meta_learner_comparison as exp18
 import experiments.exp25_osrct_mc_baseline_comparison as exp25
+import experiments.osrct_target_pipeline as target_pipeline
 
 
 def _comparison_fixture() -> pd.DataFrame:
@@ -1109,22 +1110,22 @@ def test_exp16_posterior_draw_threads_preserve_sample_results(
         )
 
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "estimate_target_observed_binary_quantities",
         estimate,
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "solve_target_bounds_from_observed_binary_quantities",
         solve,
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "complete_lp_strata",
         lambda bounds, target_idle, config: bounds.copy(),
     )
     monkeypatch.setattr(
-        exp16,
+        target_pipeline,
         "summarize_lp_posterior_bounds",
         lambda samples, covariates: samples.sort_values(
             "lp_posterior_sample_id"
