@@ -237,6 +237,9 @@ def selection_probability(z_bias: np.ndarray, beta: float, intercept: float = 0.
 
     The covariate is standardised before the logistic transform, matching
     ``osrct_benchmark_v1.0/code/osrct.py``, so ``beta`` means the same there.
+    The two agree bit for bit on complete, non-degenerate covariates. They differ
+    on NaN input and on a constant covariate whose float mean rounds; see
+    ``tests/test_experiments/test_osrct_selection_agreement.py``.
 
     Args:
         z_bias: Biasing covariate values.
