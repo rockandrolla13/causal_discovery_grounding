@@ -21,8 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       # Blocking: `ruff check .` is clean, so any new finding fails the job.
@@ -46,10 +46,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -65,7 +65,7 @@ jobs:
 
       # Restore only: the full-suite job saves the checkpoint.
       - name: Restore the TabICL checkpoint
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .hf-cache
           key: hf-tabicl-${{ hashFiles('requirements.txt') }}
@@ -93,10 +93,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -116,7 +116,7 @@ jobs:
       # job succeeds. Saving with `if: always()` keeps the checkpoint after a failing run.
       - name: Restore the TabICL checkpoint
         id: hf-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .hf-cache
           key: hf-tabicl-${{ hashFiles('requirements.txt') }}
@@ -136,7 +136,7 @@ jobs:
 
       - name: Save the TabICL checkpoint
         if: always() && steps.hf-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .hf-cache
           key: ${{ steps.hf-cache.outputs.cache-primary-key }}
@@ -183,7 +183,7 @@ jobs:
 
       - name: Upload pytest report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: pytest-report
           path: pytest-report.xml
