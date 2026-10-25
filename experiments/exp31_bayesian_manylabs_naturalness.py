@@ -286,6 +286,8 @@ SOURCE_FILES = (
     "causal_grounding/train_target_split.py",
     "causal_grounding/loaders/manylabs_rct.py",
     "causal_grounding/loaders/osrct.py",
+    "causal_grounding/loaders/covariates.py",
+    "causal_grounding/loaders/cohort.py",
     "experiments/exp16_osrct_calibrated_policy.py",
     "experiments/exp25_osrct_mc_baseline_comparison.py",
     "experiments/osrct_data_utils.py",

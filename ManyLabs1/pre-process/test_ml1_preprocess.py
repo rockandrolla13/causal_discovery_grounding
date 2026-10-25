@@ -17,6 +17,10 @@ import sys
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+# ml1_preprocess reads the raw .sav file with pyreadstat. Without it, skip this
+# module instead of aborting collection of the whole suite.
+pytest.importorskip("pyreadstat")
+
 from ml1_preprocess import (
     preprocess_manylabs1,
     categorize_race,

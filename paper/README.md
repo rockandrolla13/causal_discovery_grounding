@@ -144,7 +144,7 @@ paper/reproduce_experiment2_twins.sh --tree /data/exp28_paper_tree
 
 ## Experiment III: Bayesian pipeline on ManyLabs
 
-`reproduce_experiment3_bayesian.sh` reruns the Bayesian pipeline on the paper's 720 ManyLabs conditions, starting from the raw ManyLabs1 data. They are 20 replications (seeds 62 to 81) × 3 studies × 3 selection covariates × 4 values of β.
+`reproduce_experiment3_bayesian.sh` reruns the Bayesian pipeline on the paper's 720 ManyLabs conditions, starting from the raw ManyLabs1 data. They are 20 replications (seeds 62 to 81) × 3 studies × 3 selection covariates × 4 values of β. The design matches Experiment I, but the OSRCT draws are disjoint: Experiment I uses seeds 202608 to 202627.
 
 **Outputs**, under `results/paper/experiment3_bayesian/`:
 

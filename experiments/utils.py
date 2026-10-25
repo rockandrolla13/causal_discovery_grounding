@@ -13,6 +13,10 @@ import numpy as np
 import pandas as pd
 
 from causal_grounding.discretize import discretize_polideo
+from causal_grounding.loaders.covariates import (  # noqa: F401  re-exported
+    DEFAULT_AGE_BINARY_THRESHOLD,
+    derive_age_bin,
+)
 from causal_grounding.naturalness_grounder import NaturalnessGrounder, NaturalnessGrid
 from causal_grounding.train_target_split import (
     get_available_sites,
@@ -42,7 +46,6 @@ SUPPORTED_TARGET_TRIGGER_PROBABILITY_BACKENDS = (
     *SUPPORTED_LP_PROBABILITY_BACKENDS,
 )
 MAX_BINARY_CATE_ENDPOINT_RESIDUAL = 2.0
-DEFAULT_AGE_BINARY_THRESHOLD = 21.0
 DEFAULT_GENDER_BINARY_THRESHOLD = 0.5
 DEFAULT_POLIDEO_BINARY_THRESHOLD = 3.0
 DEFAULT_LP_POSTERIOR_N_JOBS = 8
@@ -187,9 +190,7 @@ def add_binary_covariates(
     osrct = osrct_data.copy()
     rct = rct_data.copy()
     for data in [osrct, rct]:
-        data["resp_age_bin"] = (
-            pd.to_numeric(data["resp_age"], errors="coerce") > age_threshold
-        ).astype(int)
+        data["resp_age_bin"] = derive_age_bin(data["resp_age"], age_threshold)
         data["resp_polideo_bin"] = (
             pd.to_numeric(data["resp_polideo"], errors="coerce") > polideo_threshold
         ).astype(int)
