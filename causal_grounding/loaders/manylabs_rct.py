@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from .contract import RawDataset, SiteBundle, SiteTable
+from .covariates import DEFAULT_AGE_BINARY_THRESHOLD, derive_age_bin
 from .osrct import (
     COVARIATES,
     OUTCOME,
@@ -34,7 +35,6 @@ from .osrct import (
     SUPPORTED_STUDIES,
     TREATMENT,
     UNIT_ID,
-    DEFAULT_AGE_BINARY_THRESHOLD,
     DEFAULT_POLIDEO_BINARY_THRESHOLD,
 )
 
@@ -149,10 +149,9 @@ class ManyLabsRCTLoader:
         # Truncates rather than rounds. Same as the OSRCT side, on purpose.
         result["resp_gender_bin"] = result["resp_gender"].astype(int)
 
-        result["resp_age_bin"] = (
-            pd.to_numeric(result["resp_age"], errors="coerce")
-            > self.age_threshold
-        ).astype(int)
+        result["resp_age_bin"] = derive_age_bin(
+            result["resp_age"], self.age_threshold
+        )
         result["resp_polideo_bin"] = (
             pd.to_numeric(result["resp_polideo"], errors="coerce")
             > self.polideo_threshold
