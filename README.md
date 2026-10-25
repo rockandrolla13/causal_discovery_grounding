@@ -95,18 +95,10 @@ Only conditions on $Z_1$ fire at the target. Naturalness is never told which cov
 
 ### Step by step
 
-The same pipeline with the package's API, run from the repository root (or after `pip install -e .`):
+The same pipeline with the package's `Naturalness` class, run from the repository root (or after `pip install -e .`):
 
 ```python
-import pandas as pd
-
-from causal_grounding import (
-    NaturalnessGrid,
-    NaturalnessGrounder,
-    TargetNaturalnessPolicy,
-    estimate_target_observed_binary_quantities,
-    solve_target_bounds_from_observed_binary_quantities,
-)
+from causal_grounding import Naturalness
 from examples.toy_naturalness import simulate_toy_data
 
 # Sources: {"site00": rows, ...} with covariates Z1, Z2, treatment X, outcome Y
@@ -114,53 +106,28 @@ from examples.toy_naturalness import simulate_toy_data
 # Target: observational rows only. truth: the target's true CATE by stratum.
 sources, target, truth = simulate_toy_data(seed=0)
 
-# 1. Stages 1-3 on the sources: where I_j(epsilon) and D_j(tau) fire, and
-#    Gaussian-process surfaces for the learned tolerances c and d.
-grid = NaturalnessGrid(
-    epsilons=[0.01, 0.025, 0.05, 0.075, 0.10, 0.15, 0.20, 0.50],
-    taus=[0.075, 0.10, 0.15, 0.20, 0.30],
-    covariates=["Z1", "Z2"],
-)
-grounder = NaturalnessGrounder(grid, stage1_backend="empirical", random_seed=0)
-grounder.fit(sources, treatment="X", outcome="Y", regime_col="F")
-
-# 2. The conditions that fire at the target.
-policy = TargetNaturalnessPolicy().choose(target, grounder)
-conditions = policy.to_frame(selected_only=True)
-
-# 3. Tolerance draws through the target linear program.
-quantities = estimate_target_observed_binary_quantities(
-    target, treatment="X", outcome="Y", covariates=grid.covariates, regime_col="F"
-)
-draws = grounder.sample_tolerances(conditions, n_samples=1000, random_seed=0)
-solved = pd.concat(
-    solve_target_bounds_from_observed_binary_quantities(
-        quantities, draw, return_details=True, include_intervention_diagnostics=False
-    )
-    for _, draw in draws.groupby("sample_id")
-)
-
-# 4. The Naturalness interval: mean endpoints over the optimal draws.
-optimal = solved[solved["status"] == "optimal"]
-bounds = optimal.groupby(["Z1", "Z2"])[["lower", "upper"]].mean()
-print(bounds.join(truth.set_index(["Z1", "Z2"])).round(3))
+model = Naturalness(covariates=["Z1", "Z2"], n_draws=1000, random_state=0)
+model.fit(sources)                 # Stages 1-3 on the sources
+bounds = model.get_bounds(target)  # target conditions, then the target LP
+print(bounds.merge(truth, on=["Z1", "Z2"]).round(3))
 ```
 
 ```text
-       lower  upper  true_cate
-Z1 Z2                         
-0  0  -0.056  0.472      0.189
-   1  -0.290  0.261      0.000
-1  0  -0.056  0.472      0.189
-   1  -0.290  0.261      0.000
+   Z1  Z2  lower  upper  p_optimal  true_cate
+0   0   0 -0.056  0.472        1.0      0.189
+1   0   1 -0.290  0.261        1.0      0.000
+2   1   0 -0.056  0.472        1.0      0.189
+3   1   1 -0.290  0.261        1.0      0.000
 ```
 
-scikit-learn may print a `ConvergenceWarning` while the Gaussian processes are fitted, when a length-scale reaches its bound because a tolerance surface is flat along that axis. It is harmless here; the example script silences it.
+`fit` runs Stages 1-3 on the sources with `NaturalnessGrounder`: where $I_j(\epsilon)$ and $D_j(\tau)$ fire, and Gaussian-process surfaces for the learned tolerances $c$ and $d$. `get_bounds` finds the conditions that fire at the target with `TargetNaturalnessPolicy`, propagates tolerance draws through the target linear program, and averages the endpoints over the draws whose program is optimal. `p_optimal` is the share of such draws. `get_bounds(target, return_conditions=True)` also returns the target conditions. `fit` accepts a mapping of site frames, one long frame with `site_col=`, or a loader `SiteBundle`. The default grids are the paper's (`PAPER_EPSILONS`, `PAPER_TAUS`). [`examples/toy_naturalness.py`](examples/toy_naturalness.py) spells out the same steps with the lower-level classes.
+
+scikit-learn may raise a `ConvergenceWarning` while the Gaussian processes are fitted, when a length-scale reaches its bound because a tolerance surface is flat along that axis. It is harmless here, and `fit` silences it.
 
 To use your own data, give every site the same discrete covariate columns, a binary treatment, a binary outcome and a regime column. Source sites need both regimes; the target needs observational rows only. A few points to keep in mind:
 
-- **Probability model.** `stage1_backend="empirical"` uses smoothed cell frequencies. The paper uses `"tabicl_v2"` (TabICLv2) for Stage 1 and for the target probabilities (`probability_backend="tabicl_v2"` in `estimate_target_observed_binary_quantities`). `"xgboost"` and `"hierarchical_dirichlet"` are also available.
-- **When nothing fires.** If no condition fires at the target, `policy.status` is `"no_triggered_candidates"` and Naturalness abstains. A stratum whose program has no optimal draw also has no Naturalness interval. The paper scores both cases with the Manski interval.
+- **Probability model.** `stage1_backend="empirical"` uses smoothed cell frequencies. The paper uses `"tabicl_v2"` (TabICLv2) for Stage 1 and for the target probabilities (`Naturalness(..., stage1_backend="tabicl_v2", target_backend="tabicl_v2")`). `"xgboost"` and `"hierarchical_dirichlet"` are also available.
+- **When nothing fires.** If no condition fires at the target, `model.policy_result_.status` is `"no_triggered_candidates"` and Naturalness abstains: every endpoint is `NaN` and `p_optimal` is 0. A stratum whose program has no optimal draw also has no Naturalness interval. The paper scores both cases with the Manski interval.
 - **Source sites.** In Experiment I, the paper's pipeline (`experiments/exp16_osrct_calibrated_policy.py`) holds out 9 of the 35 source sites for endpoint calibration and 11 more for policy tuning, and fits its grounder on the remaining 15. The example fits on every source.
 
 ## Reproducing the paper
