@@ -59,7 +59,7 @@ docker run --rm --gpus all --user "$(id -u):$(id -g)" \
 
 ## Quick start: a toy example
 
-[`examples/toy_naturalness.py`](examples/toy_naturalness.py) simulates ten source sites, each with 2,000 trial rows (`F = "on"`) and 2,000 observational rows (`F = "idle"`), and a target site with 4,000 observational rows. All variables are binary. An unobserved $U$ confounds treatment $X$ and outcome $Y$ in the observational regime. $Z_1$ moves treatment but not the outcome, and $Z_2$ modifies the effect: the true CATE is exactly $0$ when $Z_2 = 1$, and $+0.189$ when $Z_2 = 0$ at the target of the default seed. The script fits Naturalness with the paper's grids, propagates 1,000 draws of the learned tolerances through the target linear program, as the paper does, and compares the result with the truth and two reference bounds. It needs only the package's own dependencies and runs in about half a minute on a CPU:
+[`examples/toy_naturalness.py`](examples/toy_naturalness.py) simulates ten source sites, each with 2,000 trial rows (`F = "on"`) and 2,000 observational rows (`F = "idle"`), and a target site with 4,000 observational rows. All variables are binary. An unobserved $U$ confounds treatment $X$ and outcome $Y$ in the observational regime. $Z_1$ moves treatment but not the outcome, and $Z_2$ modifies the effect: the true CATE is exactly $0$ when $Z_2 = 1$, and $+0.189$ when $Z_2 = 0$ at the target of the default seed. The script fits Naturalness with the paper's grids, propagates 1,000 draws of the learned tolerances through the target linear program, as the paper does, and compares the result with the truth and two reference bounds. It needs only the package's own dependencies and takes one to two minutes on a laptop CPU, depending on the hardware:
 
 ```bash
 python examples/toy_naturalness.py
@@ -161,7 +161,7 @@ To use your own data, give every site the same discrete covariate columns, a bin
 
 - **Probability model.** `stage1_backend="empirical"` uses smoothed cell frequencies. The paper uses `"tabicl_v2"` (TabICLv2) for Stage 1 and for the target probabilities (`probability_backend="tabicl_v2"` in `estimate_target_observed_binary_quantities`). `"xgboost"` and `"hierarchical_dirichlet"` are also available.
 - **When nothing fires.** If no condition fires at the target, `policy.status` is `"no_triggered_candidates"` and Naturalness abstains. A stratum whose program has no optimal draw also has no Naturalness interval. The paper scores both cases with the Manski interval.
-- **Source sites.** In Experiment I, the paper's pipeline (`experiments/exp16_osrct_calibrated_policy.py`) holds out about a quarter of the source sites (9 of 35) for endpoint calibration and fits its grounder on the rest. The example fits on every source.
+- **Source sites.** In Experiment I, the paper's pipeline (`experiments/exp16_osrct_calibrated_policy.py`) holds out 9 of the 35 source sites for endpoint calibration and 11 more for policy tuning, and fits its grounder on the remaining 15. The example fits on every source.
 
 ## Reproducing the paper
 
