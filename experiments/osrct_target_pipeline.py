@@ -35,6 +35,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+from causal_grounding.loaders.schema import MANYLABS_COVARIATES, OUTCOME_COLUMN, TREATMENT_COLUMN
 from causal_grounding.lp_solver_learned_naturalness import (
     TargetObservedBinaryQuantities,
     estimate_target_observed_binary_quantities,
@@ -458,7 +459,7 @@ def build_empirical_rct_cate_labels(
         error, and a 90% Wald interval.
     """
 
-    required = {"iv", "dv_binary", *covariates}
+    required = {TREATMENT_COLUMN, OUTCOME_COLUMN, *covariates}
     missing = required - set(rct_rows.columns)
     if missing:
         raise ValueError(f"RCT rows are missing required columns: {sorted(missing)}")
@@ -472,8 +473,8 @@ def build_empirical_rct_cate_labels(
         dropna=False,
     ):
         key_tuple = key if isinstance(key, tuple) else (key,)
-        treated = group.loc[group["iv"].eq(1), "dv_binary"]
-        control = group.loc[group["iv"].eq(0), "dv_binary"]
+        treated = group.loc[group[TREATMENT_COLUMN].eq(1), OUTCOME_COLUMN]
+        control = group.loc[group[TREATMENT_COLUMN].eq(0), OUTCOME_COLUMN]
         if len(treated) < int(min_arm_count) or len(control) < int(min_arm_count):
             continue
         mu1 = float(treated.mean())
@@ -554,16 +555,8 @@ class Exp16Config(OSRCTConfig):
     patterns: tuple[str, ...] | None = DEFAULT_EXP16_PATTERNS
     betas: tuple[float, ...] | None = DEFAULT_EXP16_BETAS
     target_sites: tuple[str, ...] = ("pi",)
-    naturalness_covariates: tuple[str, ...] = (
-        "resp_age_bin",
-        "resp_gender_bin",
-        "resp_polideo_bin",
-    )
-    lp_probability_covariates: tuple[str, ...] = (
-        "resp_age_bin",
-        "resp_gender_bin",
-        "resp_polideo_bin",
-    )
+    naturalness_covariates: tuple[str, ...] = MANYLABS_COVARIATES
+    lp_probability_covariates: tuple[str, ...] = MANYLABS_COVARIATES
     stage1_backend: str = "tabicl_v2"
     validation_stage1_backend: str | None = "tabicl_v2"
     lp_probability_backend: str = "stage1"
@@ -904,8 +897,8 @@ def _estimate_candidate_state_quantities(
     return {
         state: estimate_target_observed_binary_quantities(
             target_idle,
-            treatment="iv",
-            outcome="dv_binary",
+            treatment=TREATMENT_COLUMN,
+            outcome=OUTCOME_COLUMN,
             covariates=list(state),
             model_covariates=list(state),
             probability_backend=backend,
@@ -994,8 +987,8 @@ def build_policy_candidates(
     result = policy.choose(
         target_idle,
         grounder,
-        treatment="iv",
-        outcome="dv_binary",
+        treatment=TREATMENT_COLUMN,
+        outcome=OUTCOME_COLUMN,
         regime_col="F",
         trigger_quantities=trigger_quantities,
     )
@@ -1043,8 +1036,8 @@ def estimate_target_trigger_quantities(
         )
     return estimate_target_observed_binary_quantities(
         target_idle,
-        treatment="iv",
-        outcome="dv_binary",
+        treatment=TREATMENT_COLUMN,
+        outcome=OUTCOME_COLUMN,
         covariates=config.covariates,
         model_covariates=config.covariates,
         probability_backend=backend,
@@ -1144,8 +1137,8 @@ def solve_choices_lp(
     if observed is None:
         observed = estimate_target_observed_binary_quantities(
             target_idle,
-            treatment="iv",
-            outcome="dv_binary",
+            treatment=TREATMENT_COLUMN,
+            outcome=OUTCOME_COLUMN,
             covariates=config.covariates,
             model_covariates=config.lp_probability_covariates,
             probability_backend=probability_backend,
@@ -1842,8 +1835,8 @@ def solve_choices_lp_posterior_samples(
         elif observed is None:
             observed = estimate_target_observed_binary_quantities(
                 target_idle,
-                treatment="iv",
-                outcome="dv_binary",
+                treatment=TREATMENT_COLUMN,
+                outcome=OUTCOME_COLUMN,
                 covariates=config.covariates,
                 model_covariates=config.lp_probability_covariates,
                 probability_backend=probability_backend,
@@ -1883,8 +1876,8 @@ def solve_choices_lp_posterior_samples(
             else:
                 current_observed = estimate_target_observed_binary_quantities(
                     target_idle,
-                    treatment="iv",
-                    outcome="dv_binary",
+                    treatment=TREATMENT_COLUMN,
+                    outcome=OUTCOME_COLUMN,
                     covariates=config.covariates,
                     model_covariates=config.lp_probability_covariates,
                     probability_backend=probability_backend,

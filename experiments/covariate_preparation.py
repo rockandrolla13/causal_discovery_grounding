@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+from causal_grounding.loaders.schema import MANYLABS_COVARIATES, OUTCOME_COLUMN
 from causal_grounding.discretize import discretize_polideo
 from causal_grounding.loaders.covariates import (
     derive_age_bin,
@@ -19,11 +20,7 @@ from causal_grounding.train_target_split import (
 
 DEFAULT_GENDER_BINARY_THRESHOLD = 0.5
 
-USEFUL_COVARIATES = (
-    "resp_age_bin",
-    "resp_gender_bin",
-    "resp_polideo_bin",
-)
+USEFUL_COVARIATES = MANYLABS_COVARIATES
 
 
 def add_naturalness_columns(
@@ -72,7 +69,7 @@ def add_naturalness_columns(
     age_labels = list(range(len(age_edges) - 1))
 
     for data in [osrct, rct]:
-        data["dv_binary"] = (data[outcome] == positive_value).astype(int)
+        data[OUTCOME_COLUMN] = (data[outcome] == positive_value).astype(int)
         data["dv_positive_value"] = positive_value
         data["resp_age_cat"] = pd.cut(
             data["resp_age"],
@@ -87,7 +84,7 @@ def add_naturalness_columns(
 
     metadata = {
         "source_outcome": outcome,
-        "binary_outcome": "dv_binary",
+        "binary_outcome": OUTCOME_COLUMN,
         "positive_value": float(positive_value),
         "age_edges": age_edges.tolist(),
         "age_bins": len(age_labels),

@@ -18,6 +18,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
+
 
 BACKDOOR_TRAINING_OUTPUT = "backdoor_cate_correction_training"
 BACKDOOR_PREDICTION_OUTPUT = "backdoor_cate_correction_predictions"
@@ -41,7 +43,7 @@ def _build_empirical_rct_cate_labels(
         One row per supported stratum with RCT CATE labels and support counts.
     """
 
-    required = {"iv", "dv_binary", *covariates}
+    required = {TREATMENT_COLUMN, OUTCOME_COLUMN, *covariates}
     missing = required - set(rct_rows.columns)
     if missing:
         raise ValueError(f"RCT rows are missing required columns: {sorted(missing)}")
@@ -55,8 +57,8 @@ def _build_empirical_rct_cate_labels(
         dropna=False,
     ):
         key_tuple = key if isinstance(key, tuple) else (key,)
-        treated = group.loc[group["iv"].eq(1), "dv_binary"]
-        control = group.loc[group["iv"].eq(0), "dv_binary"]
+        treated = group.loc[group[TREATMENT_COLUMN].eq(1), OUTCOME_COLUMN]
+        control = group.loc[group[TREATMENT_COLUMN].eq(0), OUTCOME_COLUMN]
         if len(treated) < int(min_arm_count) or len(control) < int(min_arm_count):
             continue
         mu1 = float(treated.mean())
@@ -97,8 +99,8 @@ def estimate_backdoor_adjusted_cate_labels(
     rows: pd.DataFrame,
     *,
     covariates: Sequence[str],
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     min_arm_count: int = 1,
 ) -> pd.DataFrame:
     """Estimate stratum-level back-door adjusted CATEs from observed rows.
@@ -440,8 +442,8 @@ def build_backdoor_cate_correction_baseline(
     covariates: Sequence[str],
     rct_min_arm_count: int,
     backdoor_min_arm_count: int,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     regime_col: str = "F",
     disjoint_validation_ids: bool = False,
     id_col: str = "id",
@@ -672,8 +674,8 @@ def add_backdoor_cate_correction_outputs(
     rct_min_arm_count: int,
     backdoor_min_arm_count: int,
     metadata: Mapping[str, Any] | None = None,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     regime_col: str = "F",
     disjoint_validation_ids: bool = False,
     id_col: str = "id",

@@ -28,6 +28,14 @@ import numpy as np
 import pandas as pd
 
 from .contract import RawDataset, SiteBundle, SiteTable
+from .schema import (
+    MANYLABS_COVARIATES,
+    OUTCOME_COLUMN,
+    SITE_COLUMN,
+    SOURCE_OUTCOME_COLUMN,
+    TREATMENT_COLUMN,
+    UNIT_ID_COLUMN,
+)
 from .covariates import (  # noqa: F401  DEFAULT_POLIDEO_BINARY_THRESHOLD re-exported
     DEFAULT_AGE_BINARY_THRESHOLD,
     DEFAULT_POLIDEO_BINARY_THRESHOLD,
@@ -42,20 +50,15 @@ SUPPORTED_STUDIES: FrozenSet[str] = frozenset(
     {"gainloss", "reciprocity", "allowedforbidden"}
 )
 
-TREATMENT = "iv"
-SOURCE_OUTCOME = "dv"
-OUTCOME = "dv_binary"
-UNIT_ID = "id"
-SITE = "site"
+# Short aliases of the schema constants, kept for existing importers.
+TREATMENT = TREATMENT_COLUMN
+SOURCE_OUTCOME = SOURCE_OUTCOME_COLUMN
+OUTCOME = OUTCOME_COLUMN
+UNIT_ID = UNIT_ID_COLUMN
+SITE = SITE_COLUMN
 
-# Single source of truth. Previously written three times — as
-# OSRCTConfig.covariates (never read), as USEFUL_COVARIATES in
-# experiments/utils.py, and implicitly in the derivation. See AR-DRY-012.
-COVARIATES: Tuple[str, ...] = (
-    "resp_age_bin",
-    "resp_gender_bin",
-    "resp_polideo_bin",
-)
+# Single source of truth lives in loaders/schema.py. See AR-DRY-012/102.
+COVARIATES: Tuple[str, ...] = MANYLABS_COVARIATES
 
 # Fixed, not configurable, from causal_grounding.discretize.discretize_polideo.
 POLIDEO_BIN_EDGES: Tuple[float, ...] = (-0.1, 2.5, 3.5, 6.1)

@@ -20,9 +20,11 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
+from .loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 
-def manski_interval(cell: pd.DataFrame, *, treatment: str = "iv",
-                    outcome: str = "dv_binary") -> tuple[float, float]:
+
+def manski_interval(cell: pd.DataFrame, *, treatment: str = TREATMENT_COLUMN,
+                    outcome: str = OUTCOME_COLUMN) -> tuple[float, float]:
     """Return the Manski interval of one cell.
 
     A missing treatment arm counts as unobserved mass. It is neither dropped
@@ -47,8 +49,8 @@ def manski_interval(cell: pd.DataFrame, *, treatment: str = "iv",
 
 
 def manski_bounds(target_idle: pd.DataFrame, strata: pd.DataFrame, covariates: Sequence[str],
-                  min_count: int, *, treatment: str = "iv",
-                  outcome: str = "dv_binary") -> pd.DataFrame:
+                  min_count: int, *, treatment: str = TREATMENT_COLUMN,
+                  outcome: str = OUTCOME_COLUMN) -> pd.DataFrame:
     """Compute unsmoothed binary Manski bounds and a shared fitting-support mask.
 
     Args:

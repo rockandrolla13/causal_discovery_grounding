@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Sequence
 
 import pandas as pd
 
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from causal_grounding.naturalness_grounder import NaturalnessGrounder, NaturalnessGrid
 from causal_grounding.probability_backends import probability_backend_names
 
@@ -207,8 +208,8 @@ def fit_configured_naturalness_grounder(
     )
     grounder.fit(
         training_data,
-        treatment="iv",
-        outcome="dv_binary",
+        treatment=TREATMENT_COLUMN,
+        outcome=OUTCOME_COLUMN,
         regime_col="F",
     )
     return grounder

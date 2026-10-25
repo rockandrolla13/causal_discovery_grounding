@@ -41,6 +41,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from causal_grounding.loaders.schema import MANYLABS_COVARIATES, OUTCOME_COLUMN, TREATMENT_COLUMN
 from experiments.osrct_target_pipeline import (
     DEFAULT_EXP16_BETAS,
     DEFAULT_EXP16_PATTERNS,
@@ -104,11 +105,7 @@ EXP25_METHOD_COLORS = {
     "cb_ipw": META_LEARNER_COLORS["cb_ipw"],
     "cb_dr": META_LEARNER_COLORS["cb_dr"],
 }
-EXP25_STRATUM_COLUMNS = (
-    "resp_age_bin",
-    "resp_gender_bin",
-    "resp_polideo_bin",
-)
+EXP25_STRATUM_COLUMNS = MANYLABS_COVARIATES
 EXP25_IDENTITY_COLUMNS = (
     "study",
     *EXP25_STRATUM_COLUMNS,
@@ -1269,7 +1266,7 @@ def identification_bound_intervals(
         idle = target_idle_by_study[str(study)]
         # The bound helpers compare and bit-pack the covariates as integers.
         idle = idle.assign(**{name: idle[name].astype(int) for name in covariates},
-                           iv=idle["iv"].astype(int), dv_binary=idle["dv_binary"].astype(int))
+                           iv=idle[TREATMENT_COLUMN].astype(int), dv_binary=idle[OUTCOME_COLUMN].astype(int))
         strata = study_identities[covariates].astype(int).drop_duplicates()
         strata = strata.reset_index(drop=True)
         # The recomputed bins must reproduce the primary run's target counts;

@@ -35,6 +35,7 @@ from scipy import linalg
 from scipy.spatial import Delaunay, QhullError
 from scipy.special import logsumexp, ndtr, ndtri
 
+from .loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from .lp_solver_learned_naturalness import (
     TargetObservedBinaryQuantities,
     estimate_target_observed_binary_quantities,
@@ -424,8 +425,8 @@ def draw_raw_pmfs(
     n_draws: int,
     alpha: float = 1.0,
     random_seed: int = 20260922,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
     site_col: str = "site",
     regime_col: str = "F",
@@ -635,8 +636,8 @@ def draw_tabicl_bootstrap_pmfs(
     n_draws: int,
     random_seed: int,
     predictor_kwargs: Mapping[str, Any] | None = None,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
     site_col: str = "site",
     regime_col: str = "F",
@@ -797,7 +798,7 @@ def raw_pmf_draws_from_frame(
     frame: pd.DataFrame,
     data: pd.DataFrame,
     *,
-    treatment: str = "iv",
+    treatment: str = TREATMENT_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
     site_col: str = "site",
     regime_col: str = "F",
@@ -877,8 +878,8 @@ def raw_pmf_posterior_parameters(
     n_draws: int,
     alpha: float,
     random_seed: int,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
     site_col: str = "site",
     regime_col: str = "F",
@@ -1002,8 +1003,8 @@ def raw_pmf_posterior_parameters(
 def rows_from_raw_pmf_posterior_parameters(
     parameters: pd.DataFrame,
     *,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
 ) -> pd.DataFrame:
     """Rebuild rows whose raw-PMF posterior equals a stored parameter table.
@@ -2334,8 +2335,8 @@ def draw_rct_reference_posterior(
     alpha: float = 1.0,
     min_arm_count: int = 1,
     random_seed: int = 20260922,
-    treatment: str = "iv",
-    outcome: str = "dv_binary",
+    treatment: str = TREATMENT_COLUMN,
+    outcome: str = OUTCOME_COLUMN,
     covariates: Sequence[str] = DEFAULT_COVARIATES,
 ) -> pd.DataFrame:
     """Draw held-out randomized CATE and target-weighted ATE references.

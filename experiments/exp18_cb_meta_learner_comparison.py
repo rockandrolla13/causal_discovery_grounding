@@ -60,6 +60,7 @@ from scipy.special import logit
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from causal_grounding.loaders.schema import OUTCOME_COLUMN, TREATMENT_COLUMN
 from causal_grounding.naturalness_grounder import SUPPORTED_GP_FEATURE_MODES
 from experiments.osrct_target_pipeline import (
     DEFAULT_EXP16_STUDIES,
@@ -983,7 +984,7 @@ def _blearner_study_inputs(
     """
 
     covariates = _comparison_covariates(config)
-    treatment = target_idle["iv"].to_numpy(dtype=int)
+    treatment = target_idle[TREATMENT_COLUMN].to_numpy(dtype=int)
     if set(np.unique(treatment)) != {0, 1}:
         raise ValueError(
             f"{study}/{_study_target_site(config, study)} target idle data "
@@ -999,7 +1000,7 @@ def _blearner_study_inputs(
         covariates=tuple(covariates),
         x=_covariate_matrix(target_idle, covariates).astype(float),
         treatment=treatment,
-        outcome=target_idle["dv_binary"].to_numpy(dtype=float),
+        outcome=target_idle[OUTCOME_COLUMN].to_numpy(dtype=float),
         strata=strata,
         strata_x=_covariate_matrix(strata, covariates).astype(float),
         target_counts=(
@@ -2481,8 +2482,8 @@ def _environment_arrays(
 
     return (
         _covariate_matrix(data, covariates),
-        data["iv"].to_numpy(dtype=np.float32),
-        data["dv_binary"].to_numpy(dtype=np.float32),
+        data[TREATMENT_COLUMN].to_numpy(dtype=np.float32),
+        data[OUTCOME_COLUMN].to_numpy(dtype=np.float32),
     )
 
 
