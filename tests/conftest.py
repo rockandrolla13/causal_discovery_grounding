@@ -4,6 +4,7 @@ import json
 import math
 from collections.abc import Callable
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -37,6 +38,12 @@ def golden_round_trip(tmp_path) -> Callable[[pd.DataFrame], pd.DataFrame]:
 # bound would pass unnoticed; logic changes in the pipeline move bounds by more.
 GOLDEN_RTOL = 1e-6
 GOLDEN_ATOL = 1e-3
+
+# Columns that sum over training points, so the absolute tolerance does not fit their
+# scale. On a runner with a different CPU (2026-10-26, same image and packages) the GP
+# log marginal likelihood of about -38 moved by 2.1e-3 (relative 5.4e-5) while every
+# bound stayed within GOLDEN_ATOL. These columns compare relatively instead.
+GOLDEN_COLUMN_RTOL = {"log_marginal_likelihood": 1e-4}
 
 
 def _as_json_value(value):
@@ -72,7 +79,8 @@ def assert_frame_matches_golden(actual: pd.DataFrame, expected: pd.DataFrame) ->
 
     Numeric columns compare with ``GOLDEN_RTOL`` and ``GOLDEN_ATOL``. Text columns
     that hold JSON (for example learned GP hyperparameters) are parsed and their
-    numbers compared the same way; other text compares exactly.
+    numbers compared the same way; other text compares exactly. Columns in
+    ``GOLDEN_COLUMN_RTOL`` compare with their own relative tolerance.
 
     Args:
         actual: Frame produced by the code under test, after ``golden_round_trip``.
@@ -83,10 +91,17 @@ def assert_frame_matches_golden(actual: pd.DataFrame, expected: pd.DataFrame) ->
         if expected[column].dtype == object
         and expected[column].map(lambda value: _as_json_value(value) is not value).any()
     ]
+    relative_columns = [column for column in GOLDEN_COLUMN_RTOL if column in expected.columns]
+    separate_columns = json_columns + relative_columns
     pd.testing.assert_frame_equal(
-        actual.drop(columns=json_columns), expected.drop(columns=json_columns),
+        actual.drop(columns=separate_columns), expected.drop(columns=separate_columns),
         check_exact=False, rtol=GOLDEN_RTOL, atol=GOLDEN_ATOL,
     )
+    for column in relative_columns:
+        np.testing.assert_allclose(
+            actual[column].to_numpy(dtype=float), expected[column].to_numpy(dtype=float),
+            rtol=GOLDEN_COLUMN_RTOL[column], atol=0, err_msg=column,
+        )
     for column in json_columns:
         for row, (left, right) in enumerate(zip(actual[column], expected[column])):
             _assert_json_close(

@@ -5,7 +5,8 @@ confounded datasets (Experiment I). :func:`experiments.naturalness_comparison_da
 selection_probability` builds the Twins regimes (Experiment II). The second claims
 to match the first, so that ``beta`` means the same confounding strength in both.
 
-The passing tests pin where the two agree bit for bit. The ``xfail(strict=True)``
+The passing tests pin where the two agree, bit for bit or to floating-point rounding
+(1e-12; numpy's vectorised exp differs by one unit in the last place between CPUs). The ``xfail(strict=True)``
 tests document where they differ; a strict xfail turns into a failure if the
 behaviour changes, so any later unification has to update this file deliberately.
 """
@@ -69,13 +70,14 @@ def _frame(kind: str, seed: int) -> np.ndarray:
 @pytest.mark.parametrize("kind", ["normal", "lognormal", "binary_float", "uint8_codes", "ordinal"])
 @pytest.mark.parametrize("seed", SEEDS)
 def test_selection_probabilities_identical_on_generic_frames(kind: str, seed: int) -> None:
-    """Both implementations give bit-identical probabilities on ordinary covariates."""
+    """Both implementations agree to rounding on ordinary covariates."""
     z = _frame(kind, seed)
     for beta in BETAS:
         for intercept in INTERCEPTS:
-            np.testing.assert_array_equal(
+            np.testing.assert_allclose(
                 data.selection_probability(z, beta, intercept),
                 _osrct_probability(z, beta, intercept),
+                rtol=0, atol=1e-12,
             )
 
 
