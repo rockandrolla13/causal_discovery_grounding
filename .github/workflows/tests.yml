@@ -18,7 +18,7 @@ permissions:
 jobs:
   lint:
     name: ruff
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
@@ -36,7 +36,7 @@ jobs:
   # instead of after the full suite.
   pytest-fast:
     name: pytest fast (package and result guards)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     env:
@@ -80,7 +80,7 @@ jobs:
 
   pytest:
     name: pytest (Python 3.11, CPU)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The suite takes a few minutes on an idle 16-thread machine and much longer under load,
     # plus dependency install. The timeout leaves room for a slow runner.
     timeout-minutes: 60
