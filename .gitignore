@@ -16,3 +16,6 @@ ManyLabs1/pre-process/covariates_list.txt
 # Local agent worktrees.
 .claude/worktrees/
 .venv/
+
+CLAUDE.md
+AGENTS.md
