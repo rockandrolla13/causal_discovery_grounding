@@ -170,6 +170,22 @@ The suite runs on the CPU. It takes a few minutes on an idle 16-thread machine, 
 
 Data and results are not included; the scripts download or build them as described above.
 
+## Citation
+
+If the ideas of the paper or the code help your research, please cite:
+
+```
+@misc{soares2026naturalness,
+      title={Causal Discovery Grounding and the Naturalness Assumption}, 
+      author={Guilherme P. Soares and Andreas Koukorinis and Sander Beckers and Jake Fawkes and David S. Watson and Ricardo Silva},
+      year={2026},
+      eprint={2611.10388},
+      archivePrefix={arXiv},
+      primaryClass={stat.ME},
+      url={https://arxiv.org/abs/2611.10388}, 
+}
+```
+
 ## License
 
 MIT; see [`LICENSE`](LICENSE). BLearner, TabICLv2 and the datasets come under their own terms.
