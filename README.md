@@ -1,6 +1,6 @@
 # Naturalness
 
-Code for the paper *Causal Discovery Grounding and the Naturalness Assumption*: the `causal_grounding` Python package, which implements Naturalness grounding, and the scripts that reproduce every table and figure of the paper's experiments.
+Code for the paper *Causal Discovery Grounding and the Naturalness Assumption*: the `causal_grounding` Python package, which implements Naturalness grounding, and the scripts that reproduce every table and figure of the paper's experiments. Paper: http://arxiv.org/abs/2611.10388
 
 Naturalness bounds the conditional average treatment effect (CATE) of a binary treatment on a binary outcome at a **target site** that has observational data only. It learns from **source sites** that hold both a randomized trial and observational data. On the sources it measures when a covariate $Z_j$ behaves like a natural experiment: with treatment and the other covariates held fixed, the observed outcome barely changes across $Z_j$ (the condition $\mathcal I_j(\epsilon)$), while treatment uptake does change with $Z_j$ (the condition $\mathcal D_j(\tau)$). It then learns, with Gaussian processes, how far the unobserved potential-outcome distributions can still vary when both conditions hold (the tolerances $c$ and $d$). At the target, the conditions that fire turn these tolerances into the constraints of a linear program whose minimum and maximum bound the CATE of each covariate stratum.
 
